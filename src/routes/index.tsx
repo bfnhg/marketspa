@@ -20,6 +20,7 @@ function Index() {
   const audio = useRef(new WaterAudio());
   const [ready, setReady] = useState(false);
   const [sound, setSound] = useState(false);
+  const [vol, setVol] = useState(0.6);
   const hover = (v: boolean) => { water.current?.setCalm(v); audio.current.muffle(v); };
   return (
     <main className="fixed inset-0 overflow-hidden bg-background text-foreground">
@@ -39,6 +40,8 @@ function Index() {
         </section>
         <div className="corner">
           <span>Scroll to drift</span><i />
+          <input className="vol" type="range" min={0} max={1} step={0.01} value={vol} aria-label="Volume"
+            onChange={(e) => { const v = +e.target.value; setVol(v); audio.current.setVolume(v); }} />
           <button aria-label="Toggle sound" aria-pressed={sound} onClick={() => setSound(audio.current.toggle())}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M4 9h4l5-4v14l-5-4H4z" />
