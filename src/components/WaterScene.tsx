@@ -55,8 +55,8 @@ export function WaterScene({ onReady, handle }: { onReady: () => void; handle: R
     const mm = (e: PointerEvent) => { st.tmx = e.clientX * dpr; st.tmy = (innerHeight - e.clientY) * dpr; };
     const wh = (e: WheelEvent) => { st.tspd = Math.min(1, st.tspd + Math.abs(e.deltaY) * 0.002); };
     let ty = 0;
-    const ts = (e: TouchEvent) => (ty = e.touches[0].clientY);
-    const tm = (e: TouchEvent) => { const y = e.touches[0].clientY; st.tspd = Math.min(1, st.tspd + Math.abs(y - ty) * 0.02); ty = y; };
+    const ts = (e: TouchEvent) => (ty = e.touches[0]?.clientY ?? ty);
+    const tm = (e: TouchEvent) => { const y = e.touches[0]?.clientY ?? ty; st.tspd = Math.min(1, st.tspd + Math.abs(y - ty) * 0.02); ty = y; };
     addEventListener("pointermove", mm); addEventListener("wheel", wh, { passive: true });
     addEventListener("touchstart", ts, { passive: true }); addEventListener("touchmove", tm, { passive: true });
     st.tmx = st.mx = c.width / 2; st.tmy = st.my = c.height * 0.3;
