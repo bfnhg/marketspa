@@ -1,23 +1,52 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useRef, useState } from "react";
+import { WaterScene, type WaterHandle } from "@/components/WaterScene";
+import { WaterAudio } from "@/lib/water-audio";
 
-// The home route ships no og:image, so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  ssr: false,
+  head: () => ({ meta: [
+    { title: "Tidewell — Shaped by water" },
+    { name: "description", content: "An immersive design studio. Drift across a living night sea that ripples as you move." },
+    { property: "og:title", content: "Tidewell — Shaped by water" },
+    { property: "og:description", content: "An immersive design studio. Drift across a living night sea that ripples as you move." },
+    { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" },
+  ] }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
+  const water = useRef<WaterHandle | null>(null);
+  const audio = useRef(new WaterAudio());
+  const [ready, setReady] = useState(false);
+  const [sound, setSound] = useState(false);
+  const hover = (v: boolean) => { water.current?.setCalm(v); audio.current.muffle(v); };
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <main className="fixed inset-0 overflow-hidden bg-background text-foreground">
+      <WaterScene handle={water} onReady={() => setTimeout(() => setReady(true), 400)} />
+      <div className={`loader ${ready ? "gone" : ""}`}><span /></div>
+      <div className={`ui ${ready ? "on" : ""}`}>
+        <header className="ui-head">
+          <a href="#" className="brand">Tidewell</a>
+          <nav><a href="#">Work</a><a href="#">About</a><a href="#">Journal</a><a href="#" className="pill">Let’s talk</a></nav>
+        </header>
+        <section className="hero">
+          <h1>Shaped by water.</h1>
+          <p>Fluid by nature.<br />Built for what’s next.</p>
+          <button className="go" aria-label="Enter" onPointerEnter={() => hover(true)} onPointerLeave={() => hover(false)}>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
+          </button>
+        </section>
+        <div className="corner">
+          <span>Scroll to drift</span><i />
+          <button aria-label="Toggle sound" aria-pressed={sound} onClick={() => setSound(audio.current.toggle())}>
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M4 9h4l5-4v14l-5-4H4z" />
+              {sound ? <path d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11" /> : <path d="M17 9l5 6M22 9l-5 6" />}
+            </svg>
+          </button>
+        </div>
+      </div>
+    </main>
   );
 }
