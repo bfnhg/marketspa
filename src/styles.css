@@ -215,12 +215,14 @@ body:has(.sa-order-dialog[open]) textarea{cursor:text}
 /* ---------- Zoom « Notre service » ---------- */
 .stage{position:relative;height:100svh;overflow:hidden}
 .hero-zoom{position:absolute;inset:0;transform-origin:50% 55%;will-change:transform,opacity,filter}
+.hero-zoom .hero-flowers{z-index:0;opacity:1}
+.hero-zoom>.hero{z-index:1}
 .svc-zoom{position:absolute;inset:0;z-index:12;display:grid;place-items:center;pointer-events:none;opacity:0}
 .svc-zoom-inner{width:min(980px,88vw);text-align:center;display:flex;flex-direction:column;align-items:center;will-change:transform,opacity,filter}
-.svc-kicker{font-size:calc(20*var(--u));text-transform:uppercase;letter-spacing:-.02em;opacity:.8}
-.svc-title{margin-top:calc(8*var(--u));line-height:.9;letter-spacing:-.05em;mix-blend-mode:multiply}
+.svc-kicker{font-size:clamp(14px,calc(20*var(--u)),20px);text-transform:uppercase;letter-spacing:-.02em;opacity:.85;color:var(--color-foreground)}
+.svc-title{margin-top:calc(8*var(--u));line-height:.9;letter-spacing:-.05em;color:var(--color-foreground);mix-blend-mode:normal}
 .svc-title .serif,.svc-title .sans{display:block}
-.svc-desc{margin-top:calc(30*var(--u));font-size:calc(28*var(--u));line-height:1.35;letter-spacing:-.02em}
+.svc-desc{margin-top:calc(30*var(--u));font-size:clamp(18px,calc(30*var(--u)),30px);line-height:1.4;letter-spacing:-.02em;color:var(--color-foreground)}
 .flowers{position:absolute;inset:0;z-index:14;pointer-events:none;overflow:hidden;opacity:0}
 .flower{position:absolute;left:0;top:0;perspective:400px;will-change:transform}
 .flower-inner{width:100%;height:100%;filter:drop-shadow(0 3px 4px oklch(0.5 0.1 15 / .18))}
@@ -228,6 +230,7 @@ body:has(.sa-order-dialog[open]) textarea{cursor:text}
   .svc-zoom-inner{width:90vw}
   .svc-title .serif{font-size:clamp(50px,15vw,88px)}
   .svc-title .sans{font-size:clamp(54px,16.5vw,96px)}
+  .svc-kicker{font-size:clamp(12px,3.5vw,16px)}
   .svc-desc{margin-top:18px;font-size:clamp(16px,4.6vw,20px);line-height:1.4}
   .flower:nth-child(2n){display:none} /* moitié moins de fleurs sur mobile */
 }
@@ -434,6 +437,7 @@ body[data-cur=drag] .cursor span::after{content:"GLISSER";color:#fff;opacity:1;t
   font-family:"Inter Tight",sans-serif;user-select:text}
 .sa-order-dialog[open]{display:block}
 .sa-order-dialog::backdrop{background:rgba(35,31,25,.4);backdrop-filter:blur(9px)}
+.sa-order-form[hidden],.sa-quote-preview[hidden]{display:none}
 .sa-order-form{display:grid;gap:18px;padding:clamp(22px,5vw,34px)}
 .sa-order-heading{position:relative;display:grid;justify-items:center;text-align:center;gap:8px;padding:4px 34px 6px}
 .sa-order-eyebrow{margin:0;color:#625e54;font-size:10px;font-weight:600;letter-spacing:.2em;text-transform:uppercase}
@@ -460,16 +464,47 @@ body[data-cur=drag] .cursor span::after{content:"GLISSER";color:#fff;opacity:1;t
 .sa-order-fields input:focus,.sa-order-fields textarea:focus{border-color:rgba(100,91,75,.52);background:rgba(255,255,255,.68);box-shadow:0 0 0 3px rgba(132,123,109,.14)}
 .sa-order-address{grid-column:1/-1}
 .sa-order-note{margin:0;color:#565249;font-size:12px;line-height:1.5}
-.sa-order-actions{display:grid;grid-template-columns:1fr 1.15fr;align-items:center;gap:10px}
-.sa-order-cancel,.sa-order-submit{min-height:46px;padding:0 16px;border:1px solid rgba(85,77,64,.14)!important;
+.sa-order-actions{display:grid;grid-template-columns:.9fr 1.05fr 1.1fr;align-items:center;gap:10px}
+.sa-order-cancel,.sa-order-quote,.sa-order-submit{min-height:46px;padding:0 14px;border:1px solid rgba(85,77,64,.14)!important;
   border-radius:999px!important;font-size:13px!important;font-weight:600!important;transition:transform .25s,background .25s}
-.sa-order-cancel{background:rgba(255,255,255,.48)!important;color:#34312d!important}
+.sa-order-cancel,.sa-order-quote{background:rgba(255,255,255,.48)!important;color:#34312d!important}
 .sa-order-submit{background:#292722!important;color:#fff!important}
-.sa-order-cancel:hover,.sa-order-submit:hover{transform:translateY(-1px)}
+.sa-order-cancel:hover,.sa-order-quote:hover,.sa-order-submit:hover{transform:translateY(-1px)}
+.sa-quote-preview{display:grid;gap:18px;padding:clamp(16px,4vw,28px)}
+.sa-quote-paper{padding:clamp(16px,4vw,28px);border:1px solid rgba(255,255,255,.72);border-radius:18px;
+  background:rgba(255,255,255,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.72);color:#292722}
+.sa-quote-header{display:flex;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid rgba(85,77,64,.18)}
+.sa-quote-header p,.sa-quote-customer p{margin:3px 0;color:#565249;font-size:12px}
+.sa-quote-brand{font:italic 400 27px/1.1 var(--font-serif)!important;color:#292722!important}
+.sa-quote-meta{text-align:right}
+.sa-quote-meta h2{margin:0 0 8px;font:italic 400 25px/1.1 var(--font-serif);text-transform:capitalize}
+.sa-quote-meta p{font-size:11px}
+.sa-quote-customer{padding:14px 0}
+.sa-quote-customer h3,.sa-quote-items h3{margin:0 0 8px;color:#625e54;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+.sa-quote-customer-name{font-weight:600}
+.sa-quote-address{white-space:pre-line}
+.sa-quote-items{padding:14px 0;border-top:1px solid rgba(85,77,64,.18)}
+.sa-quote-items>div{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:13px}
+.sa-quote-totals{display:grid;gap:8px;margin:0;padding:14px 0;border-top:1px solid rgba(85,77,64,.18)}
+.sa-quote-totals>div{display:flex;justify-content:space-between;gap:12px;font-size:13px}
+.sa-quote-totals dt{color:#625e54}
+.sa-quote-totals dd{margin:0;font-weight:600}
+.sa-quote-totals .sa-quote-grand-total{padding-top:10px;border-top:1px solid rgba(85,77,64,.18);font-size:16px;font-weight:700}
+.sa-quote-grand-total dt,.sa-quote-grand-total dd{color:#292722;font-weight:700}
+.sa-quote-delivery,.sa-quote-disclaimer{margin:8px 0 0;color:#565249;font-size:11px;line-height:1.5}
+.sa-quote-disclaimer{padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.3)}
+.sa-quote-actions{display:grid;grid-template-columns:1fr 1.2fr;gap:10px}
+.sa-quote-actions button{min-height:44px;padding:0 14px;border:1px solid rgba(85,77,64,.14)!important;border-radius:999px!important;
+  background:rgba(255,255,255,.48)!important;color:#34312d!important;font-size:13px!important;font-weight:600!important}
+.sa-quote-actions .sa-quote-download{background:#292722!important;color:#fff!important}
 @media(max-width:520px){
   .sa-order-dialog{width:calc(100vw - 24px);max-height:calc(100svh - 24px);border-radius:22px}
   .sa-order-form{gap:14px}
   .sa-order-fields{grid-template-columns:1fr}
   .sa-order-address{grid-column:auto}
   .sa-order-actions{grid-template-columns:1fr}
+  .sa-quote-preview{gap:12px}
+  .sa-quote-header{flex-direction:column}
+  .sa-quote-meta{text-align:left}
+  .sa-quote-actions{grid-template-columns:1fr}
 }

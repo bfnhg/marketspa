@@ -50,7 +50,11 @@ export function ServiceZoom({ stage }: { stage: RefObject<HTMLDivElement | null>
             { scale: 1, filter: "blur(0px)", ease: "power3.out", duration: 1.1 },
             0.45,
           )
-          .from(".svc-desc", { y: 40, opacity: 0, ease: "power2.out", duration: 0.5 }, 1.1)
+          .from(
+            ".svc-kicker, .svc-desc",
+            { y: 30, opacity: 0, ease: "power2.out", duration: 0.55, stagger: 0.12 },
+            1.1,
+          )
           .to(flowers, { opacity: 1, duration: 0.5, ease: "none" }, 0.8)
           .to({}, { duration: 0.6 }); // petite pause à la fin avant de relâcher
       },
@@ -76,14 +80,15 @@ export function ServiceZoom({ stage }: { stage: RefObject<HTMLDivElement | null>
       <FallingFlowers />
       <div ref={root} id="services" className="svc-zoom" aria-labelledby="services-title">
         <div className="svc-zoom-inner">
+          <p className="svc-kicker">Pour les hammams, spas et hôtels</p>
           <h2 id="services-title" className="svc-title">
             <span className="serif">Notre</span>
             <span className="sans">service</span>
           </h2>
           <p className="svc-desc">
-            Vente en gros et en détail
+            Produits et accessoires pour hammams, spas et hôtels.
             <br />
-            de produits jetables pour spa.
+            Vente en gros et au détail.
           </p>
         </div>
       </div>

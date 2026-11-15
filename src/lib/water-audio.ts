@@ -1,8 +1,12 @@
-// Original lo-fi instrumental generated with Web Audio; no prerecorded song.
+// Soft lounge instrumental generated with Web Audio; no prerecorded song.
 export const RECORDING_URL: string | null = null;
 
 export class WaterAudio {
-  ctx: AudioContext | null = null; master!: GainNode; lp!: BiquadFilterNode; on = false; volume = 0.6;
+  ctx: AudioContext | null = null;
+  master!: GainNode;
+  lp!: BiquadFilterNode;
+  on = false;
+  volume = 0.6;
   private musicTimer: number | null = null;
   private beat = 0;
   start() {
@@ -12,117 +16,99 @@ export class WaterAudio {
       (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextConstructor) throw new Error("Web Audio is not supported by this browser");
     const ctx = (this.ctx = new AudioContextConstructor());
-    this.lp = ctx.createBiquadFilter(); this.lp.type = "lowpass"; this.lp.frequency.value = 18000;
-    this.master = ctx.createGain(); this.master.gain.value = 0;
+    this.lp = ctx.createBiquadFilter();
+    this.lp.type = "lowpass";
+    this.lp.frequency.value = 5200;
+    this.master = ctx.createGain();
+    this.master.gain.value = 0;
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = 0.28;
+    const echo = ctx.createGain();
+    echo.gain.value = 0.14;
     this.lp.connect(this.master).connect(ctx.destination);
+    this.lp.connect(delay);
+    delay.connect(echo).connect(delay);
+    delay.connect(this.master);
     if (RECORDING_URL) {
-      const el = new Audio(RECORDING_URL); el.loop = true; el.crossOrigin = "anonymous";
+      const el = new Audio(RECORDING_URL);
+      el.loop = true;
+      el.crossOrigin = "anonymous";
       ctx.createMediaElementSource(el).connect(this.lp);
-      void el.play().catch((error: unknown) => console.error("Unable to play the water recording", error));
+      void el
+        .play()
+        .catch((error: unknown) => console.error("Unable to play the water recording", error));
     } else this.synth();
   }
   synth() {
-    const ctx = this.ctx!, len = ctx.sampleRate * 4, buf = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let ch = 0; ch < 2; ch++) {
-      const d = buf.getChannelData(ch);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.35;
-    }
-    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
-    const bp = ctx.createBiquadFilter(); bp.type = "lowpass"; bp.frequency.value = 1800;
-    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 900;
-    const texture = ctx.createGain(); texture.gain.value = 0.025;
-    src.connect(hp).connect(bp).connect(texture).connect(this.lp); src.start();
     this.musicTimer = window.setInterval(() => {
       if (!this.on) return;
       this.playBeat();
       this.beat = (this.beat + 1) % 16;
-    }, 600);
+    }, 790);
   }
   private playBeat() {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== "running") return;
     const now = ctx.currentTime;
     const beatInBar = this.beat % 4;
-    const chord = [
-      [146.83, 174.61, 220, 261.63],
-      [130.81, 164.81, 196, 246.94],
-      [98, 130.81, 164.81, 196],
-      [110, 130.81, 164.81, 220],
+    const progression = [
+      { bass: 73.42, notes: [146.83, 174.61, 220, 261.63, 329.63] },
+      { bass: 98, notes: [146.83, 164.81, 174.61, 220, 293.66] },
+      { bass: 65.41, notes: [130.81, 164.81, 196, 246.94, 293.66] },
+      { bass: 55, notes: [110, 130.81, 164.81, 196, 246.94] },
     ][Math.floor(this.beat / 4)];
 
-    if (beatInBar === 0) {
-      for (const frequency of chord) this.playPad(frequency, now);
+    if (beatInBar === 0 && progression) {
+      this.playPad(progression.bass, now, 3.5, 0.007);
+      for (const frequency of progression.notes) this.playPad(frequency, now, 3.6, 0.0045);
     }
-    if (beatInBar === 0 || beatInBar === 2) this.playKick(now);
-    if (beatInBar === 1 || beatInBar === 3) this.playSnare(now);
-    this.playHat(now, beatInBar === 1 || beatInBar === 3 ? 0.018 : 0.009);
-
-    if (this.beat % 4 === 2 && Math.random() > 0.35) {
-      const melody = [392, 440, 523.25, 587.33, 659.25];
-      this.playPad(melody[Math.floor(Math.random() * melody.length)], now, 0.45);
-    }
+    const melody = [
+      null,
+      null,
+      null,
+      523.25,
+      null,
+      null,
+      null,
+      493.88,
+      null,
+      null,
+      440,
+      null,
+      392,
+      null,
+      440,
+      null,
+      null,
+    ];
+    const note = melody[this.beat];
+    if (note != null) this.playPad(note, now, 1.7, 0.007);
   }
-  private playPad(frequency: number, now: number, duration = 1.9) {
+  private playPad(frequency: number, now: number, duration = 2.8, level = 0.01) {
     const ctx = this.ctx!;
     const oscillator = ctx.createOscillator();
+    const overtone = ctx.createOscillator();
+    const overtoneGain = ctx.createGain();
     const gain = ctx.createGain();
     oscillator.type = "triangle";
+    overtone.type = "sine";
     oscillator.frequency.value = frequency;
+    overtone.frequency.value = frequency * 2;
+    overtoneGain.gain.value = 0.16;
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.018, now + 0.12);
-    gain.gain.setTargetAtTime(0.0001, now + duration * 0.55, duration * 0.18);
+    gain.gain.exponentialRampToValueAtTime(level, now + 0.035);
+    gain.gain.setTargetAtTime(0.0001, now + 0.12, duration * 0.42);
     oscillator.connect(gain).connect(this.lp);
+    overtone.connect(overtoneGain).connect(gain);
     oscillator.start(now);
+    overtone.start(now);
     oscillator.stop(now + duration);
+    overtone.stop(now + duration);
   }
-  private playKick(now: number) {
-    const oscillator = this.ctx!.createOscillator();
-    const gain = this.ctx!.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(105, now);
-    oscillator.frequency.exponentialRampToValueAtTime(48, now + 0.16);
-    gain.gain.setValueAtTime(0.14, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-    oscillator.connect(gain).connect(this.lp);
-    oscillator.start(now);
-    oscillator.stop(now + 0.23);
+  private apply() {
+    if (this.ctx)
+      this.master.gain.setTargetAtTime(this.on ? this.volume : 0, this.ctx.currentTime, 0.4);
   }
-  private playSnare(now: number) {
-    const ctx = this.ctx!;
-    const length = Math.floor(ctx.sampleRate * 0.14);
-    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    const samples = buffer.getChannelData(0);
-    for (let i = 0; i < length; i++) samples[i] = (Math.random() * 2 - 1) * (1 - i / length);
-    const source = ctx.createBufferSource();
-    const filter = ctx.createBiquadFilter();
-    const gain = ctx.createGain();
-    source.buffer = buffer;
-    filter.type = "bandpass";
-    filter.frequency.value = 1800;
-    filter.Q.value = 0.8;
-    gain.gain.value = 0.045;
-    source.connect(filter).connect(gain).connect(this.lp);
-    source.start(now);
-    source.stop(now + 0.15);
-  }
-  private playHat(now: number, amplitude: number) {
-    const ctx = this.ctx!;
-    const length = Math.floor(ctx.sampleRate * 0.045);
-    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    const samples = buffer.getChannelData(0);
-    for (let i = 0; i < length; i++) samples[i] = (Math.random() * 2 - 1) * (1 - i / length);
-    const source = ctx.createBufferSource();
-    const filter = ctx.createBiquadFilter();
-    const gain = ctx.createGain();
-    source.buffer = buffer;
-    filter.type = "highpass";
-    filter.frequency.value = 6500;
-    gain.gain.value = amplitude;
-    source.connect(filter).connect(gain).connect(this.lp);
-    source.start(now);
-    source.stop(now + 0.05);
-  }
-  private apply() { if (this.ctx) this.master.gain.setTargetAtTime(this.on ? this.volume : 0, this.ctx.currentTime, 0.4); }
   async enable() {
     if (!this.ctx) this.start();
     const wasOff = !this.on;
@@ -153,8 +139,13 @@ export class WaterAudio {
     }
     return this.enable();
   }
-  setVolume(v: number) { this.volume = v; this.apply(); }
-  muffle(v: boolean) { if (this.ctx) this.lp.frequency.setTargetAtTime(v ? 400 : 18000, this.ctx.currentTime, 0.4); }
+  setVolume(v: number) {
+    this.volume = v;
+    this.apply();
+  }
+  muffle(v: boolean) {
+    if (this.ctx) this.lp.frequency.setTargetAtTime(v ? 400 : 5200, this.ctx.currentTime, 0.4);
+  }
   dispose() {
     if (this.musicTimer !== null) window.clearInterval(this.musicTimer);
     this.musicTimer = null;

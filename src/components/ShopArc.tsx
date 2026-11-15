@@ -6,7 +6,7 @@ import string from "@/assets/products/string.png";
 import gant from "@/assets/products/gant.png";
 import boxer from "@/assets/products/boxer.png";
 import bougie from "@/assets/products/bougie.png";
-import { EMAIL } from "@/lib/contact";
+import { WHATSAPP_NUMBER } from "@/lib/contact";
 
 /*
  * Boutique « arc spatial » : cartes en verre dépoli disposées en arc 3D autour
@@ -17,6 +17,21 @@ import { EMAIL } from "@/lib/contact";
 // pack : produit en vente (unités par pack + paliers [nb de packs minimum, prix du pack en DH])
 type Pack = { units: number; tiers: [number, number][] };
 type Product = { n: string; img: string; pack?: Pack };
+type Quote = {
+  number: string;
+  issuedAt: string;
+  validUntil: string;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  product: string;
+  quantity: number;
+  units: number;
+  unitPrice: number;
+  subtotal: number;
+  vat: number;
+  total: number;
+};
 
 // Produits en vente pour le moment : boxer et string. Les autres arrivent bientôt.
 const PRODUCTS: Product[] = [
@@ -54,6 +69,9 @@ const CARDS = N * 2; // deux tours de produits : l'arc boucle sans couture
 const HALF = N;
 
 const dh = (v: number) => `${v.toLocaleString("fr-FR")} DH`;
+const VAT_RATE = 0.2;
+const QUOTE_VALIDITY_DAYS = 15;
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 // prix d'un pack selon le nombre de packs commandés
 const priceFor = (pack: Pack, n: number) =>
   pack.tiers.reduce((price, [min, p]) => (n >= min ? p : price), pack.tiers[0]![1]);
@@ -159,27 +177,173 @@ export function ShopArc() {
     const order = $<HTMLAnchorElement>(".sa-order");
     const orderDialog = $<HTMLDialogElement>(".sa-order-dialog");
     const orderForm = $<HTMLFormElement>(".sa-order-form");
+    const quotePreview = $<HTMLElement>(".sa-quote-preview");
     const dialogQuantity = $<HTMLElement>(".sa-order-quantity");
     const nOut = $<HTMLElement>(".sa-n");
     const tiersEl = $<HTMLElement>(".sa-tiers");
     const saveEl = $<HTMLElement>(".sa-save");
     const thumb = $<HTMLElement>(".sa-thumb i");
+    let activeQuote: Quote | null = null;
 
     const updateDialogSummary = () => {
       const p = PRODUCTS[st.shown];
       if (!p?.pack) return;
       const quantity = st.packs;
       const unit = priceFor(p.pack, quantity);
+      const subtotal = unit * quantity;
       const details: Record<string, string> = {
         ".sa-order-product": p.n,
         ".sa-order-units": `${quantity * p.pack.units} unités`,
         ".sa-order-unit-price": dh(unit),
-        ".sa-order-total": dh(unit * quantity),
+        ".sa-order-total": dh(subtotal),
       };
       Object.entries(details).forEach(([selector, value]) => {
         $<HTMLElement>(selector).textContent = value;
       });
       dialogQuantity.textContent = `${quantity} pack${quantity > 1 ? "s" : ""}`;
+    };
+
+    const createQuote = () => {
+      if (!orderForm.reportValidity()) return;
+      const p = PRODUCTS[st.shown];
+      if (!p?.pack) return;
+
+      const data = new FormData(orderForm);
+      const quantity = st.packs;
+      const unit = priceFor(p.pack, quantity);
+      const total = unit * quantity;
+      const subtotal = roundMoney(total / (1 + VAT_RATE));
+      const vat = roundMoney(total - subtotal);
+      const now = new Date();
+      const validUntil = new Date(now);
+      validUntil.setDate(validUntil.getDate() + QUOTE_VALIDITY_DAYS);
+      const date = (value: Date) => value.toLocaleDateString("fr-FR");
+      const quote: Quote = {
+        number: `DEV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-6)}`,
+        issuedAt: date(now),
+        validUntil: date(validUntil),
+        customerName: String(data.get("customerName") ?? ""),
+        customerPhone: String(data.get("customerPhone") ?? ""),
+        customerAddress: String(data.get("deliveryAddress") ?? ""),
+        product: p.n,
+        quantity,
+        units: quantity * p.pack.units,
+        unitPrice: unit,
+        subtotal,
+        vat,
+        total,
+      };
+      activeQuote = quote;
+      const previewValues: Record<string, string> = {
+        ".sa-quote-number": quote.number,
+        ".sa-quote-issued": quote.issuedAt,
+        ".sa-quote-valid-until": quote.validUntil,
+        ".sa-quote-customer-name": quote.customerName,
+        ".sa-quote-phone": quote.customerPhone,
+        ".sa-quote-address": quote.customerAddress,
+        ".sa-quote-product": quote.product,
+        ".sa-quote-quantity": `${quote.quantity} pack${quote.quantity > 1 ? "s" : ""} (${quote.units} unités)`,
+        ".sa-quote-unit-price": dh(roundMoney(quote.unitPrice / (1 + VAT_RATE))),
+        ".sa-quote-subtotal": dh(quote.subtotal),
+        ".sa-quote-vat": dh(quote.vat),
+        ".sa-quote-total": dh(quote.total),
+      };
+      Object.entries(previewValues).forEach(([selector, value]) => {
+        $<HTMLElement>(selector).textContent = value;
+      });
+      orderForm.hidden = true;
+      quotePreview.hidden = false;
+      $<HTMLButtonElement>(".sa-quote-back").focus();
+    };
+
+    const downloadQuote = async () => {
+      if (!activeQuote) return;
+      const quote = activeQuote;
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ format: "a4", unit: "mm" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 20;
+      const right = pageWidth - margin;
+      const line = (y: number) => {
+        pdf.setDrawColor(220, 215, 205);
+        pdf.line(margin, y, right, y);
+      };
+      const row = (label: string, value: string, y: number, bold = false) => {
+        pdf.setFont("helvetica", bold ? "bold" : "normal");
+        pdf.text(label, margin, y);
+        pdf.text(value, right, y, { align: "right" });
+      };
+
+      pdf.setTextColor(41, 39, 34);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(24);
+      pdf.text("Marketspa", margin, 28);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.text("Syba, Marrakech", margin, 35);
+      pdf.text("Tél. 06 24 83 16 24", margin, 41);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(17);
+      pdf.text("PROJET DE DEVIS", right, 28, { align: "right" });
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.text(`N° ${quote.number}`, right, 35, { align: "right" });
+      pdf.text(`Émis le ${quote.issuedAt}`, right, 41, { align: "right" });
+      pdf.text(`Valable jusqu'au ${quote.validUntil}`, right, 47, { align: "right" });
+
+      line(54);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.text("Client", margin, 64);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.text(quote.customerName, margin, 71);
+      pdf.text(quote.customerPhone, margin, 77);
+      const addressLines = pdf.splitTextToSize(quote.customerAddress, pageWidth - margin * 2);
+      pdf.text(addressLines, margin, 83);
+
+      const tableTop = 91 + Math.max(0, addressLines.length - 1) * 5;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.text("Détail de la proposition", margin, tableTop);
+      line(tableTop + 6);
+      pdf.setFontSize(9);
+      pdf.setTextColor(100, 96, 87);
+      pdf.text("DÉSIGNATION", margin, tableTop + 13);
+      pdf.text("MONTANT", right, tableTop + 13, { align: "right" });
+      pdf.setTextColor(41, 39, 34);
+      line(tableTop + 17);
+      row("Produit", quote.product, tableTop + 25);
+      row(
+        "Quantité",
+        `${quote.quantity} pack${quote.quantity > 1 ? "s" : ""} (${quote.units} unités)`,
+        tableTop + 33,
+      );
+      row("Prix unitaire HT", dh(roundMoney(quote.unitPrice / (1 + VAT_RATE))), tableTop + 41);
+      line(tableTop + 46);
+      row("Sous-total HT", dh(quote.subtotal), tableTop + 54);
+      row("TVA incluse (20 %)", dh(quote.vat), tableTop + 62);
+      pdf.setFontSize(12);
+      row("Total TTC", dh(quote.total), tableTop + 73, true);
+      line(tableTop + 79);
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(80, 76, 66);
+      pdf.text(
+        "Livraison à confirmer avec le client, non comprise dans le total.",
+        margin,
+        tableTop + 89,
+      );
+      const notice = [
+        `Validité : ${QUOTE_VALIDITY_DAYS} jours. Ce document est un devis, pas une facture.`,
+        "TVA au taux de 20 % incluse dans le total TTC.",
+        "Identifiants légaux non renseignés : compléter et vérifier avant toute utilisation officielle.",
+      ];
+      pdf.text(notice, margin, tableTop + 101, {
+        maxWidth: pageWidth - margin * 2,
+      });
+      pdf.save(`devis-marketspa-${quote.number.toLowerCase()}.pdf`);
     };
 
     const updateOrder = () => {
@@ -212,8 +376,8 @@ export function ShopArc() {
       const p = PRODUCTS[st.shown];
       if (!p) return;
       if (!p.pack) {
-        const subject = `Demande d'informations — ${p.n}`;
-        window.location.href = `mailto:${EMAIL}?subject=${encodeURIComponent(subject)}`;
+        const message = `Bonjour, je souhaite avoir des informations sur : ${p.n}.`;
+        window.location.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
         return;
       }
 
@@ -229,19 +393,30 @@ export function ShopArc() {
       const data = new FormData(orderForm);
       const quantity = st.packs;
       const unit = priceFor(p.pack, quantity);
+      const total = unit * quantity;
       const body = [
         `Produit : ${p.n}`,
         `Quantité : ${quantity} pack${quantity > 1 ? "s" : ""} de ${p.pack.units} unités (${quantity * p.pack.units} unités)`,
-        `Prix par pack : ${dh(unit)}`,
-        `Total : ${dh(unit * quantity)}`,
+        `Prix par pack (TTC) : ${dh(unit)}`,
+        `Total TTC : ${dh(total)}`,
+        "TVA de 20 % incluse dans le prix.",
+        "Livraison : à confirmer (non incluse)",
         "",
         `Nom : ${data.get("customerName")}`,
         `Téléphone : ${data.get("customerPhone")}`,
         `Adresse de livraison : ${data.get("deliveryAddress")}`,
       ].join("\n");
-      const subject = `Commande — ${p.n} — ${quantity} pack${quantity > 1 ? "s" : ""}`;
-      window.location.href = `mailto:${EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      const message = [`Bonjour, je souhaite commander :`, "", ...body.split("\n")].join("\n");
+      window.location.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
       orderDialog.close();
+    };
+
+    $<HTMLButtonElement>(".sa-order-quote").onclick = createQuote;
+    $<HTMLButtonElement>(".sa-quote-download").onclick = downloadQuote;
+    $<HTMLButtonElement>(".sa-quote-back").onclick = () => {
+      quotePreview.hidden = true;
+      orderForm.hidden = false;
+      $<HTMLButtonElement>(".sa-order-quote").focus();
     };
 
     const setPacks = (n: number) => {
@@ -565,7 +740,7 @@ export function ShopArc() {
           <span className="sa-lbl sa-save" />
           <div className="sa-ln sa-total" />
         </div>
-        <a className="sa-order" href={`mailto:${EMAIL}`}>
+        <a className="sa-order" href={`https://wa.me/${WHATSAPP_NUMBER}`}>
           Commander
         </a>
       </div>
@@ -614,6 +789,10 @@ export function ShopArc() {
               <dt>Prix par pack</dt>
               <dd className="sa-order-unit-price" />
             </div>
+            <div>
+              <dt>Livraison</dt>
+              <dd>À confirmer</dd>
+            </div>
             <div className="sa-order-total-row">
               <dt>Total</dt>
               <dd className="sa-order-total" />
@@ -636,8 +815,8 @@ export function ShopArc() {
           </div>
 
           <p className="sa-order-note">
-            Vous pouvez ajuster la quantité ici. En confirmant, votre application e-mail s'ouvrira
-            avec le récapitulatif ; la commande sera envoyée après l'envoi de l'e-mail.
+            Crée un aperçu du devis dans cette fenêtre, ou envoie directement ta demande sur
+            WhatsApp.
           </p>
           <div className="sa-order-actions">
             <button
@@ -649,11 +828,90 @@ export function ShopArc() {
             >
               Retour à la boutique
             </button>
+            <button className="sa-order-quote" type="button">
+              Créer le devis
+            </button>
             <button className="sa-order-submit" type="submit">
-              Envoyer la commande
+              WhatsApp
             </button>
           </div>
         </form>
+
+        <section className="sa-quote-preview" aria-labelledby="sa-quote-title" hidden>
+          <div className="sa-quote-paper">
+            <header className="sa-quote-header">
+              <div>
+                <p className="sa-quote-brand">Marketspa</p>
+                <p>Syba, Marrakech</p>
+                <p>Tél. 06 24 83 16 24</p>
+              </div>
+              <div className="sa-quote-meta">
+                <h2 id="sa-quote-title">Projet de devis</h2>
+                <p>
+                  N° <span className="sa-quote-number" />
+                </p>
+                <p>
+                  Émis le <span className="sa-quote-issued" />
+                </p>
+                <p>
+                  Valable jusqu’au <span className="sa-quote-valid-until" />
+                </p>
+              </div>
+            </header>
+
+            <div className="sa-quote-customer">
+              <h3>Client</h3>
+              <p className="sa-quote-customer-name" />
+              <p className="sa-quote-phone" />
+              <p className="sa-quote-address" />
+            </div>
+
+            <div className="sa-quote-items">
+              <h3>Détail de la proposition</h3>
+              <div>
+                <span className="sa-quote-product" />
+                <b>
+                  Prix unitaire HT · <span className="sa-quote-unit-price" />
+                </b>
+              </div>
+              <div>
+                <span>
+                  Quantité · <span className="sa-quote-quantity" />
+                </span>
+              </div>
+            </div>
+
+            <dl className="sa-quote-totals">
+              <div>
+                <dt>Sous-total HT</dt>
+                <dd className="sa-quote-subtotal" />
+              </div>
+              <div>
+                <dt>TVA incluse (20 %)</dt>
+                <dd className="sa-quote-vat" />
+              </div>
+              <div className="sa-quote-grand-total">
+                <dt>Total TTC</dt>
+                <dd className="sa-quote-total" />
+              </div>
+            </dl>
+
+            <p className="sa-quote-delivery">Livraison à confirmer avec le client, non comprise.</p>
+            <p className="sa-quote-disclaimer">
+              Ce document est un devis, pas une facture. Identifiants légaux non renseignés :
+              complète et vérifie ces informations avant toute utilisation officielle.
+            </p>
+          </div>
+
+          <div className="sa-quote-actions">
+            <button className="sa-quote-back" type="button">
+              Modifier la commande
+            </button>
+            <button className="sa-quote-download" type="button">
+              Télécharger le devis PDF
+            </button>
+          </div>
+        </section>
       </dialog>
     </section>
   );

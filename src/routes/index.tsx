@@ -5,26 +5,7 @@ import { WaterAudio } from "@/lib/water-audio";
 import { ServiceZoom } from "@/components/ServiceZoom";
 import { ContactPanel } from "@/components/ContactPanel";
 import { ShopArc } from "@/components/ShopArc";
-
-const SOUND_PREFERENCE_KEY = "market-spa-sound-enabled";
-
-function getSoundPreference() {
-  if (typeof window === "undefined") return true;
-  try {
-    return window.localStorage.getItem(SOUND_PREFERENCE_KEY) !== "off";
-  } catch (error) {
-    console.error("Impossible de lire la préférence audio", error);
-    return true;
-  }
-}
-
-function saveSoundPreference(enabled: boolean) {
-  try {
-    window.localStorage.setItem(SOUND_PREFERENCE_KEY, enabled ? "on" : "off");
-  } catch (error) {
-    console.error("Impossible d'enregistrer la préférence audio", error);
-  }
-}
+import { FallingFlowers } from "@/components/FallingFlowers";
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -54,7 +35,7 @@ function Index() {
 
   useEffect(() => {
     const waterAudio = audio.current;
-    soundPreference.current = getSoundPreference();
+    soundPreference.current = true;
     let x = innerWidth / 2, y = innerHeight / 2, tx = x, ty = y, raf = 0;
     let activationPending = false;
     let autoStarted = false;
@@ -78,17 +59,15 @@ function Index() {
     };
     addEventListener("pointerdown", startOnInteraction);
     addEventListener("keydown", startOnInteraction);
-    if (soundPreference.current) {
-      void waterAudio.enable().then(() => {
-        if (!soundPreference.current || !waterAudio.on) return;
-        autoStarted = true;
-        setSound(true);
-        setAudioError(false);
-      }).catch((error: unknown) => {
-        console.error("Impossible de relancer automatiquement la musique", error);
-        setAudioError(true);
-      });
-    }
+    void waterAudio.enable().then(() => {
+      if (!soundPreference.current || !waterAudio.on) return;
+      autoStarted = true;
+      setSound(true);
+      setAudioError(false);
+    }).catch((error: unknown) => {
+      console.error("Impossible de relancer automatiquement la musique", error);
+      setAudioError(true);
+    });
     const mv = (e: PointerEvent) => {
       tx = e.clientX;
       ty = e.clientY;
@@ -149,11 +128,12 @@ function Index() {
           </nav>
         </header>
         <div className="hero-zoom">
+        <FallingFlowers className="hero-flowers" count={20} />
         <section className="hero">
           <p className="kicker reveal" style={{ ["--d" as string]: ".1s" }}>Les essentiels à usage unique</p>
           <h1>
             <span className="serif reveal" style={{ ["--d" as string]: ".25s" }}>Market Spa</span>
-            <span className="sans reveal" style={{ ["--d" as string]: ".4s" }}>au quotidien</span>
+            <span className="sans reveal" style={{ ["--d" as string]: ".4s" }}>à Marrakech</span>
           </h1>
           <a href="#services" className="work reveal" style={{ ["--d" as string]: ".6s" }}
             onClick={(e) => { e.preventDefault(); document.getElementById("boutique")?.scrollIntoView({ behavior: "smooth" }); }}
@@ -171,13 +151,11 @@ function Index() {
                   const enabled = await audio.current.toggle();
                   setSound(enabled);
                   soundPreference.current = enabled;
-                  saveSoundPreference(enabled);
                   setAudioError(false);
                 } catch (error) {
                   console.error("Impossible de démarrer le son de l'eau", error);
                   setSound(false);
                   soundPreference.current = false;
-                  saveSoundPreference(false);
                   setAudioError(true);
                 }
               }}>
