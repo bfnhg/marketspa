@@ -1,15 +1,38 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WaterScene, type WaterHandle } from "@/components/WaterScene";
 import { WaterAudio } from "@/lib/water-audio";
+import { ServiceZoom } from "@/components/ServiceZoom";
+import { ContactPanel } from "@/components/ContactPanel";
+import { ShopArc } from "@/components/ShopArc";
+
+const SOUND_PREFERENCE_KEY = "market-spa-sound-enabled";
+
+function getSoundPreference() {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(SOUND_PREFERENCE_KEY) !== "off";
+  } catch (error) {
+    console.error("Impossible de lire la préférence audio", error);
+    return true;
+  }
+}
+
+function saveSoundPreference(enabled: boolean) {
+  try {
+    window.localStorage.setItem(SOUND_PREFERENCE_KEY, enabled ? "on" : "off");
+  } catch (error) {
+    console.error("Impossible d'enregistrer la préférence audio", error);
+  }
+}
 
 export const Route = createFileRoute("/")({
   ssr: false,
   head: () => ({ meta: [
-    { title: "Tidewell Studio — Creating the unexpected" },
-    { name: "description", content: "A brand, digital & motion studio. Step into a dreamlike flooded room that ripples as you move." },
-    { property: "og:title", content: "Tidewell Studio — Creating the unexpected" },
-    { property: "og:description", content: "A brand, digital & motion studio. Step into a dreamlike flooded room that ripples as you move." },
+    { title: "Market Spa — Produits jetables" },
+    { name: "description", content: "Market Spa vous accompagne avec une sélection de produits jetables pratiques pour vos besoins du quotidien." },
+    { property: "og:title", content: "Market Spa — Produits jetables" },
+    { property: "og:description", content: "Une sélection de produits jetables pratiques pour vos besoins du quotidien." },
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" },
   ] }),
   component: Index,
@@ -19,62 +42,162 @@ function Index() {
   const water = useRef<WaterHandle | null>(null);
   const audio = useRef(new WaterAudio());
   const cursor = useRef<HTMLDivElement>(null);
+  const scene = useRef<HTMLElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [sound, setSound] = useState(false);
+  const soundPreference = useRef(true);
+  const [audioError, setAudioError] = useState(false);
   const [vol, setVol] = useState(0.6);
   const [big, setBig] = useState(false);
   const hover = (v: boolean) => { water.current?.setCalm(v); audio.current.muffle(v); setBig(v); };
 
   useEffect(() => {
+    const waterAudio = audio.current;
+    soundPreference.current = getSoundPreference();
     let x = innerWidth / 2, y = innerHeight / 2, tx = x, ty = y, raf = 0;
-    const mv = (e: PointerEvent) => { tx = e.clientX; ty = e.clientY; };
+    let activationPending = false;
+    let autoStarted = false;
+    const startOnInteraction = (event: Event) => {
+      if (!soundPreference.current || autoStarted || activationPending || !event.isTrusted) return;
+      if (event.target instanceof Element && event.target.closest(".sound-toggle")) return;
+      activationPending = true;
+      void waterAudio.enable().then(() => {
+        if (!soundPreference.current || !waterAudio.on) return;
+        autoStarted = true;
+        setSound(true);
+        setAudioError(false);
+        removeEventListener("pointerdown", startOnInteraction);
+        removeEventListener("keydown", startOnInteraction);
+      }).catch((error: unknown) => {
+        console.error("Impossible de démarrer automatiquement le son", error);
+        setAudioError(true);
+      }).finally(() => {
+        activationPending = false;
+      });
+    };
+    addEventListener("pointerdown", startOnInteraction);
+    addEventListener("keydown", startOnInteraction);
+    if (soundPreference.current) {
+      void waterAudio.enable().then(() => {
+        if (!soundPreference.current || !waterAudio.on) return;
+        autoStarted = true;
+        setSound(true);
+        setAudioError(false);
+      }).catch((error: unknown) => {
+        console.error("Impossible de relancer automatiquement la musique", error);
+        setAudioError(true);
+      });
+    }
+    const mv = (e: PointerEvent) => {
+      tx = e.clientX;
+      ty = e.clientY;
+    };
     const loop = () => { x += (tx - x) * 0.18; y += (ty - y) * 0.18;
-      if (cursor.current) cursor.current.style.transform = `translate(${x}px,${y}px)`; raf = requestAnimationFrame(loop); };
+      if (cursor.current) cursor.current.style.transform = `translate(${x}px,${y}px)`;
+      if (scene.current) {
+        scene.current.style.setProperty("--pointer-x", `${-(x / innerWidth - 0.5) * 16}px`);
+        scene.current.style.setProperty("--pointer-y", `${-(y / innerHeight - 0.5) * 10}px`);
+      }
+      raf = requestAnimationFrame(loop); };
     addEventListener("pointermove", mv); loop();
-    return () => { removeEventListener("pointermove", mv); cancelAnimationFrame(raf); };
+    return () => {
+      removeEventListener("pointermove", mv);
+      removeEventListener("pointerdown", startOnInteraction);
+      removeEventListener("keydown", startOnInteraction);
+      cancelAnimationFrame(raf);
+      waterAudio.dispose();
+    };
   }, []);
 
   const hv = { onPointerEnter: () => setBig(true), onPointerLeave: () => setBig(false) };
+  const [contact, setContact] = useState(false);
+  const closeContact = useCallback(() => setContact(false), []);
+  const openContact = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // retour instantané en haut (le scroll est ensuite bloqué)
+    scrollTo({ top: 0, behavior: "instant" });
+    setContact(true);
+  };
+  const goHome = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContact(false);
+    scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goServices = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContact(false);
+    document.getElementById("boutique")?.scrollIntoView({ behavior: "smooth" });
+  };
+  // Pas de scroll pendant que la vue contact est ouverte
+  useEffect(() => {
+    document.documentElement.classList.toggle("no-scroll", contact);
+  }, [contact]);
   return (
-    <main className="fixed inset-0 overflow-hidden bg-background text-foreground">
-      <WaterScene handle={water} onReady={() => setTimeout(() => setReady(true), 300)} />
+    <main ref={scene} className="page-shell bg-background text-foreground">
+      <div className="scene-cam"><WaterScene handle={water} onReady={() => setTimeout(() => setReady(true), 300)} /></div>
       <div className={`loader ${ready ? "gone" : ""}`}><span /></div>
       <div ref={cursor} className="cursor"><span className={big ? "big" : ""} /></div>
-      <div className={`ui ${ready ? "on" : ""}`}>
+      <div ref={stage} className="stage">
+      <div id="accueil" className={`ui ${ready ? "on" : ""} ${contact ? "contact-open" : ""}`}>
         <header className="ui-head">
-          <a href="#" className="brand" {...hv}>tidewell studio<sup>®</sup></a>
+          <a href="#" className="brand" aria-label="Market Spa, accueil" onClick={goHome} {...hv}>Market Spa</a>
           <nav>
-            <a href="#" {...hv}>Index</a><a href="#" {...hv}>Projects</a><a href="#" {...hv}>Contact</a>
-            <button className="dot-btn" aria-label="Menu" {...hv}><i /><i /></button>
+            <a href="#" onClick={goHome} {...hv}>Accueil</a><a href="#boutique" onClick={goServices} {...hv}>Produits</a>
+            <a href="#contact" className={`nav-contact ${contact ? "active" : ""}`} onClick={openContact} {...hv}>Contact</a>
+            <button className="dot-btn" aria-label="Ouvrir le menu" {...hv}><i /><i /></button>
           </nav>
         </header>
+        <div className="hero-zoom">
         <section className="hero">
-          <p className="kicker reveal" style={{ ["--d" as string]: ".1s" }}>A brand, digital &amp; motion studio</p>
+          <p className="kicker reveal" style={{ ["--d" as string]: ".1s" }}>Les essentiels à usage unique</p>
           <h1>
-            <span className="serif reveal" style={{ ["--d" as string]: ".25s" }}>Creating the</span>
-            <span className="sans reveal" style={{ ["--d" as string]: ".4s" }}>unexpected</span>
+            <span className="serif reveal" style={{ ["--d" as string]: ".25s" }}>Market Spa</span>
+            <span className="sans reveal" style={{ ["--d" as string]: ".4s" }}>au quotidien</span>
           </h1>
-          <a href="#" className="work reveal" style={{ ["--d" as string]: ".6s" }}
-            onPointerEnter={() => hover(true)} onPointerLeave={() => hover(false)}>View our work <span>↘</span></a>
+          <a href="#services" className="work reveal" style={{ ["--d" as string]: ".6s" }}
+            onClick={(e) => { e.preventDefault(); document.getElementById("boutique")?.scrollIntoView({ behavior: "smooth" }); }}
+            onPointerEnter={() => hover(true)} onPointerLeave={() => hover(false)}>Découvrir notre boutique <span>↘</span></a>
         </section>
+        </div>
+        <ContactPanel open={contact} onClose={closeContact} onHover={setBig} />
         <div className="foot">
           <div className="foot-l">
-            <button className="round" aria-label="Toggle sound" aria-pressed={sound} {...hv}
-              onClick={() => setSound(audio.current.toggle())}>
+            <button className="round sound-toggle" aria-label={audioError ? "Son indisponible" : sound ? "Désactiver le son" : "Activer le son"}
+              title={audioError ? "Le son n'a pas pu démarrer. Vérifiez les réglages audio de votre navigateur." : undefined}
+              aria-pressed={sound} {...hv}
+              onClick={async () => {
+                try {
+                  const enabled = await audio.current.toggle();
+                  setSound(enabled);
+                  soundPreference.current = enabled;
+                  saveSoundPreference(enabled);
+                  setAudioError(false);
+                } catch (error) {
+                  console.error("Impossible de démarrer le son de l'eau", error);
+                  setSound(false);
+                  soundPreference.current = false;
+                  saveSoundPreference(false);
+                  setAudioError(true);
+                }
+              }}>
               <span className={`bars ${sound ? "play" : ""}`}><i /><i /><i /><i /></span>
             </button>
-            <input className="vol" type="range" min={0} max={1} step={0.01} value={vol} aria-label="Volume"
+            <input className="vol" type="range" min={0} max={1} step={0.01} value={vol} aria-label="Volume sonore"
               onChange={(e) => { const v = +e.target.value; setVol(v); audio.current.setVolume(v); }} />
-            <a href="#" className="ghost" {...hv}>Our 2026 Wrapped</a>
+            <a href="#" className="ghost" {...hv}>Les indispensables Market Spa</a>
           </div>
-          <button className="round globe" aria-label="Language" {...hv}>
+          <button className="round globe" aria-label="Langue : français" {...hv}>
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.3">
               <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18M5 7h14M5 17h14" />
             </svg>
           </button>
-          <span className="copy">©2026</span>
+          <span className="copy">© Market Spa 2026</span>
         </div>
       </div>
+      <ServiceZoom stage={stage} />
+      </div>
+      <ShopArc />
     </main>
   );
 }

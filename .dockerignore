@@ -1,0 +1,13 @@
+.git
+.gitignore
+.DS_Store
+node_modules
+.output
+.nitro
+.tanstack
+.wrangler
+dist
+coverage
+*.log
+.env
+.env.*
