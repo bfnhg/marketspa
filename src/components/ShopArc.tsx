@@ -157,18 +157,34 @@ export function ShopArc() {
     // ---------- commande : packs, paliers de prix, total ----------
     const buy = $<HTMLElement>(".sa-buy");
     const order = $<HTMLAnchorElement>(".sa-order");
+    const orderDialog = $<HTMLDialogElement>(".sa-order-dialog");
+    const orderForm = $<HTMLFormElement>(".sa-order-form");
+    const dialogQuantity = $<HTMLElement>(".sa-order-quantity");
     const nOut = $<HTMLElement>(".sa-n");
     const tiersEl = $<HTMLElement>(".sa-tiers");
     const saveEl = $<HTMLElement>(".sa-save");
     const thumb = $<HTMLElement>(".sa-thumb i");
 
+    const updateDialogSummary = () => {
+      const p = PRODUCTS[st.shown];
+      if (!p?.pack) return;
+      const quantity = st.packs;
+      const unit = priceFor(p.pack, quantity);
+      const details: Record<string, string> = {
+        ".sa-order-product": p.n,
+        ".sa-order-units": `${quantity * p.pack.units} unités`,
+        ".sa-order-unit-price": dh(unit),
+        ".sa-order-total": dh(unit * quantity),
+      };
+      Object.entries(details).forEach(([selector, value]) => {
+        $<HTMLElement>(selector).textContent = value;
+      });
+      dialogQuantity.textContent = `${quantity} pack${quantity > 1 ? "s" : ""}`;
+    };
+
     const updateOrder = () => {
       const p = PRODUCTS[st.shown]!;
-      if (!p.pack) {
-        const subject = `Demande d'informations — ${p.n}`;
-        order.href = `mailto:${EMAIL}?subject=${encodeURIComponent(subject)}`;
-        return;
-      }
+      if (!p.pack) return;
       const n = st.packs;
       const unit = priceFor(p.pack, n);
       const total = unit * n;
@@ -186,31 +202,59 @@ export function ShopArc() {
       saveEl.textContent =
         base > total
           ? `Vous économisez ${dh(base - total)}`
-          
           : nextTier
             ? `Dès ${nextTier[0]} packs : ${dh(nextTier[1])}/pack`
             : "";
-            console.log({ "test":nextTier, base, total, saveEl: saveEl.textContent });
-      const subject = `Commande — ${p.n} — ${n} pack${n > 1 ? "s" : ""}`;
+    };
+
+    order.onclick = (event) => {
+      event.preventDefault();
+      const p = PRODUCTS[st.shown];
+      if (!p) return;
+      if (!p.pack) {
+        const subject = `Demande d'informations — ${p.n}`;
+        window.location.href = `mailto:${EMAIL}?subject=${encodeURIComponent(subject)}`;
+        return;
+      }
+
+      updateDialogSummary();
+      orderDialog.showModal();
+    };
+
+    orderForm.onsubmit = (event) => {
+      event.preventDefault();
+      const p = PRODUCTS[st.shown];
+      if (!p?.pack) return;
+
+      const data = new FormData(orderForm);
+      const quantity = st.packs;
+      const unit = priceFor(p.pack, quantity);
       const body = [
         `Produit : ${p.n}`,
-        `Quantité : ${n} pack${n > 1 ? "s" : ""} de ${p.pack.units} unités (${n * p.pack.units} unités)`,
+        `Quantité : ${quantity} pack${quantity > 1 ? "s" : ""} de ${p.pack.units} unités (${quantity * p.pack.units} unités)`,
         `Prix par pack : ${dh(unit)}`,
-        `Total : ${dh(total)}`,
+        `Total : ${dh(unit * quantity)}`,
         "",
-        "Nom :",
-        "Téléphone :",
-        "Adresse de livraison :",
+        `Nom : ${data.get("customerName")}`,
+        `Téléphone : ${data.get("customerPhone")}`,
+        `Adresse de livraison : ${data.get("deliveryAddress")}`,
       ].join("\n");
-      order.href = `mailto:${EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      const subject = `Commande — ${p.n} — ${quantity} pack${quantity > 1 ? "s" : ""}`;
+      window.location.href = `mailto:${EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      orderDialog.close();
     };
 
     const setPacks = (n: number) => {
       st.packs = Math.max(1, Math.min(999, Math.round(n) || 1));
-      if (st.shown >= 0) updateOrder();
+      if (st.shown >= 0) {
+        updateOrder();
+        if (orderDialog.open) updateDialogSummary();
+      }
     };
     $<HTMLButtonElement>(".sa-minus").onclick = () => setPacks(st.packs - 1);
     $<HTMLButtonElement>(".sa-plus").onclick = () => setPacks(st.packs + 1);
+    $<HTMLButtonElement>(".sa-order-minus").onclick = () => setPacks(st.packs - 1);
+    $<HTMLButtonElement>(".sa-order-plus").onclick = () => setPacks(st.packs + 1);
 
     const updateBuy = (k: number) => {
       const p = PRODUCTS[k]!;
@@ -378,6 +422,10 @@ export function ShopArc() {
       setCur("drag");
     };
     const onMove = (e: PointerEvent) => {
+      if (orderDialog.open) {
+        setCur("");
+        return;
+      }
       const r = el.getBoundingClientRect();
       st.tsx = (e.clientX - r.left) / r.width - 0.5;
       st.tsy = (e.clientY - r.top) / r.height - 0.5;
@@ -409,7 +457,7 @@ export function ShopArc() {
     };
     const onLeave = () => setCur("");
     const onKey = (e: KeyboardEvent) => {
-      if (!st.visible) return;
+      if (!st.visible || orderDialog.open) return;
       if (e.key === "ArrowRight") step(1);
       if (e.key === "ArrowLeft") step(-1);
     };
@@ -521,6 +569,92 @@ export function ShopArc() {
           Commander
         </a>
       </div>
+
+      <dialog className="sa-order-dialog sa-glass" aria-labelledby="sa-order-title">
+        <form className="sa-order-form">
+          <div className="sa-order-heading">
+            <div>
+              <p className="sa-order-eyebrow">Market Spa · Marrakech</p>
+              <h2 id="sa-order-title">Votre commande</h2>
+            </div>
+            <button
+              className="sa-order-close"
+              type="button"
+              aria-label="Fermer"
+              onClick={(event) => {
+                event.currentTarget.closest("dialog")?.close();
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <dl className="sa-order-summary">
+            <div>
+              <dt>Produit</dt>
+              <dd className="sa-order-product" />
+            </div>
+            <div>
+              <dt>Quantité</dt>
+              <dd className="sa-order-quantity-control">
+                <button className="sa-order-minus" type="button" aria-label="Retirer un pack">
+                  −
+                </button>
+                <output className="sa-order-quantity" aria-live="polite" />
+                <button className="sa-order-plus" type="button" aria-label="Ajouter un pack">
+                  +
+                </button>
+              </dd>
+            </div>
+            <div>
+              <dt>Nombre d'unités</dt>
+              <dd className="sa-order-units" />
+            </div>
+            <div>
+              <dt>Prix par pack</dt>
+              <dd className="sa-order-unit-price" />
+            </div>
+            <div className="sa-order-total-row">
+              <dt>Total</dt>
+              <dd className="sa-order-total" />
+            </div>
+          </dl>
+
+          <div className="sa-order-fields">
+            <label>
+              Nom complet
+              <input name="customerName" autoComplete="name" required />
+            </label>
+            <label>
+              Téléphone
+              <input name="customerPhone" type="tel" autoComplete="tel" required />
+            </label>
+            <label className="sa-order-address">
+              Adresse de livraison
+              <textarea name="deliveryAddress" autoComplete="street-address" rows={2} required />
+            </label>
+          </div>
+
+          <p className="sa-order-note">
+            Vous pouvez ajuster la quantité ici. En confirmant, votre application e-mail s'ouvrira
+            avec le récapitulatif ; la commande sera envoyée après l'envoi de l'e-mail.
+          </p>
+          <div className="sa-order-actions">
+            <button
+              className="sa-order-cancel"
+              type="button"
+              onClick={(event) => {
+                event.currentTarget.closest("dialog")?.close();
+              }}
+            >
+              Retour à la boutique
+            </button>
+            <button className="sa-order-submit" type="submit">
+              Envoyer la commande
+            </button>
+          </div>
+        </form>
+      </dialog>
     </section>
   );
 }

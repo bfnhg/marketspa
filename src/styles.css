@@ -170,6 +170,12 @@ a,button{cursor:none}
 .cursor span{display:block;width:40px;height:40px;margin:-20px 0 0 -20px;border:1.5px solid var(--color-foreground);border-radius:50%;transition:transform .35s cubic-bezier(.2,.8,.2,1),background .35s}
 .cursor span.big{transform:scale(1.8);background:color-mix(in oklab,var(--paper) 30%,transparent);border-color:transparent;backdrop-filter:invert(1) hue-rotate(180deg)}
 @media (hover:none){.cursor{display:none}}
+body:has(.sa-order-dialog[open]){cursor:auto}
+body:has(.sa-order-dialog[open]) .cursor{display:none}
+body:has(.sa-order-dialog[open]) button,
+body:has(.sa-order-dialog[open]) a{cursor:pointer}
+body:has(.sa-order-dialog[open]) input,
+body:has(.sa-order-dialog[open]) textarea{cursor:text}
 .ui{position:absolute;inset:0 0 auto;height:100svh;z-index:10;pointer-events:none;transform:translate3d(var(--pointer-x,0px),var(--pointer-y,0px),0)}
 .ui a,.ui button,.ui input{pointer-events:auto}
 .ui-head,.foot{opacity:0;transition:opacity 1.4s .9s}
@@ -423,3 +429,47 @@ body[data-cur=drag] .cursor span::after{content:"GLISSER";color:#fff;opacity:1;t
 .sa-total span{right:0;left:auto}
 .sa-buy.is-soon .sa-paid{display:none}
 
+.sa-order-dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);margin:0;width:min(540px,calc(100vw - 28px));
+  max-height:min(88svh,760px);overflow-y:auto;padding:0;border-radius:26px;color:#292722;
+  font-family:"Inter Tight",sans-serif;user-select:text}
+.sa-order-dialog[open]{display:block}
+.sa-order-dialog::backdrop{background:rgba(35,31,25,.4);backdrop-filter:blur(9px)}
+.sa-order-form{display:grid;gap:18px;padding:clamp(22px,5vw,34px)}
+.sa-order-heading{position:relative;display:grid;justify-items:center;text-align:center;gap:8px;padding:4px 34px 6px}
+.sa-order-eyebrow{margin:0;color:#625e54;font-size:10px;font-weight:600;letter-spacing:.2em;text-transform:uppercase}
+.sa-order-heading h2{margin:0;font:italic 400 34px/1.1 var(--font-serif);color:#292722}
+.sa-order-close{position:absolute;right:0;top:0;width:36px;height:36px;border:1px solid rgba(85,77,64,.12)!important;
+  border-radius:50%!important;background:rgba(255,255,255,.48)!important;color:#353229!important;font-size:23px!important;line-height:1}
+.sa-order-summary{display:grid;gap:0;margin:0;padding:14px 18px;border:1px solid rgba(255,255,255,.66);
+  border-radius:18px;background:rgba(255,255,255,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.64)}
+.sa-order-summary>div{display:flex;justify-content:space-between;gap:16px;padding:7px 0}
+.sa-order-summary dt{color:#625e54}
+.sa-order-summary dd{margin:0;text-align:right;font-weight:600}
+.sa-order-quantity-control{display:flex;align-items:center;gap:10px}
+.sa-order-quantity-control button{display:grid;place-items:center;width:27px;height:27px;border:1px solid rgba(85,77,64,.12)!important;
+  border-radius:50%!important;background:rgba(255,255,255,.48)!important;color:#34312d!important;font-size:17px!important;line-height:1}
+.sa-order-quantity-control output{min-width:58px;text-align:center}
+.sa-order-summary .sa-order-total-row{margin-top:5px;padding-top:12px;border-top:1px solid #e8e4dc;font-size:17px}
+.sa-order-summary .sa-order-total-row dd{font-weight:700}
+.sa-order-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sa-order-fields label{display:grid;gap:7px;color:#514c42;font-size:12px;font-weight:600}
+.sa-order-fields input,.sa-order-fields textarea{width:100%;min-height:46px;padding:11px 13px;border:1px solid rgba(255,255,255,.7);
+  border-radius:12px;background:rgba(255,255,255,.38);color:#292722;font:400 15px "Inter Tight",sans-serif;outline:none;
+  transition:border-color .2s,box-shadow .2s,background .2s}
+.sa-order-fields textarea{min-height:70px;resize:vertical}
+.sa-order-fields input:focus,.sa-order-fields textarea:focus{border-color:rgba(100,91,75,.52);background:rgba(255,255,255,.68);box-shadow:0 0 0 3px rgba(132,123,109,.14)}
+.sa-order-address{grid-column:1/-1}
+.sa-order-note{margin:0;color:#565249;font-size:12px;line-height:1.5}
+.sa-order-actions{display:grid;grid-template-columns:1fr 1.15fr;align-items:center;gap:10px}
+.sa-order-cancel,.sa-order-submit{min-height:46px;padding:0 16px;border:1px solid rgba(85,77,64,.14)!important;
+  border-radius:999px!important;font-size:13px!important;font-weight:600!important;transition:transform .25s,background .25s}
+.sa-order-cancel{background:rgba(255,255,255,.48)!important;color:#34312d!important}
+.sa-order-submit{background:#292722!important;color:#fff!important}
+.sa-order-cancel:hover,.sa-order-submit:hover{transform:translateY(-1px)}
+@media(max-width:520px){
+  .sa-order-dialog{width:calc(100vw - 24px);max-height:calc(100svh - 24px);border-radius:22px}
+  .sa-order-form{gap:14px}
+  .sa-order-fields{grid-template-columns:1fr}
+  .sa-order-address{grid-column:auto}
+  .sa-order-actions{grid-template-columns:1fr}
+}
