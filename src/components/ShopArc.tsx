@@ -7,6 +7,7 @@ import gant from "@/assets/products/gant.png";
 import boxer from "@/assets/products/boxer.png";
 import bougie from "@/assets/products/bougie.png";
 import { WHATSAPP_NUMBER } from "@/lib/contact";
+import { getCartLines, OPEN_QUOTE_EVENT, priceFor, type CartProduct } from "@/lib/shop-cart";
 
 /*
  * Boutique « arc spatial » : cartes en verre dépoli disposées en arc 3D autour
@@ -15,21 +16,21 @@ import { WHATSAPP_NUMBER } from "@/lib/contact";
  */
 
 // pack : produit en vente (unités par pack + paliers [nb de packs minimum, prix du pack en DH])
-type Pack = { units: number; tiers: [number, number][] };
-type Product = { n: string; img: string; pack?: Pack };
+type Product = CartProduct & { img: string };
 type Quote = {
   number: string;
   issuedAt: string;
-  validUntil: string;
   customerName: string;
   customerPhone: string;
   customerAddress: string;
-  product: string;
-  quantity: number;
-  units: number;
-  unitPrice: number;
-  subtotal: number;
-  vat: number;
+  items: {
+    product: string;
+    variant?: string;
+    quantity: number;
+    units: number;
+    unitPrice: number;
+    lineTotal: number;
+  }[];
   total: number;
 };
 
@@ -38,6 +39,7 @@ const PRODUCTS: Product[] = [
   {
     n: "Boxer homme",
     img: boxer,
+    details: "Taille standard",
     pack: {
       units: 50,
       tiers: [
@@ -50,6 +52,7 @@ const PRODUCTS: Product[] = [
   {
     n: "String femme",
     img: string,
+    details: "Taille standard",
     pack: {
       units: 100,
       tiers: [
@@ -69,12 +72,6 @@ const CARDS = N * 2; // deux tours de produits : l'arc boucle sans couture
 const HALF = N;
 
 const dh = (v: number) => `${v.toLocaleString("fr-FR")} DH`;
-const VAT_RATE = 0.2;
-const QUOTE_VALIDITY_DAYS = 15;
-const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-// prix d'un pack selon le nombre de packs commandés
-const priceFor = (pack: Pack, n: number) =>
-  pack.tiers.reduce((price, [min, p]) => (n >= min ? p : price), pack.tiers[0]![1]);
 const tierLabel = (tiers: [number, number][], i: number) => {
   const min = tiers[i]![0];
   const next = tiers[i + 1]?.[0];
@@ -122,6 +119,8 @@ export function ShopArc() {
       visible: false,
       packs: 1,
     };
+    const cart = new Map<number, number>();
+    const quoteQuantities = new Map<number, number>();
 
     // ---------- tailles ----------
     let W = 0,
@@ -174,87 +173,305 @@ export function ShopArc() {
     };
     // ---------- commande : packs, paliers de prix, total ----------
     const buy = $<HTMLElement>(".sa-buy");
-    const order = $<HTMLAnchorElement>(".sa-order");
+    const order = $<HTMLButtonElement>(".sa-order");
     const orderDialog = $<HTMLDialogElement>(".sa-order-dialog");
     const orderForm = $<HTMLFormElement>(".sa-order-form");
     const quotePreview = $<HTMLElement>(".sa-quote-preview");
-    const dialogQuantity = $<HTMLElement>(".sa-order-quantity");
+    const cartButton = $<HTMLButtonElement>(".sa-cart-button");
+    const cartCount = $<HTMLElement>(".sa-cart-count");
+    const cartStatus = $<HTMLElement>(".sa-cart-status");
+    const cartList = $<HTMLElement>(".sa-cart-items");
+    const cartEmpty = $<HTMLElement>(".sa-cart-empty");
+    const cartSummary = $<HTMLElement>(".sa-order-summary");
+    const cartFields = $<HTMLElement>(".sa-order-fields");
+    const cartNote = $<HTMLElement>(".sa-order-note");
+    const orderTitle = $<HTMLHeadingElement>("#sa-order-title");
+    const quotePicker = $<HTMLElement>(".sa-quote-picker");
+    const quoteProductList = $<HTMLElement>(".sa-quote-product-list");
+    const quoteSelectionStatus = $<HTMLElement>(".sa-quote-selection-status");
+    const quoteButton = $<HTMLButtonElement>(".sa-order-quote");
+    const submitButton = $<HTMLButtonElement>(".sa-order-submit");
     const nOut = $<HTMLElement>(".sa-n");
     const tiersEl = $<HTMLElement>(".sa-tiers");
     const saveEl = $<HTMLElement>(".sa-save");
+    const boxerColors = $<HTMLElement>(".sa-boxer-colors");
+    boxerColors.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+      button.onclick = () => {
+        const productIndex = Number(boxerColors.dataset["productIndex"] ?? "-1");
+        selectedProductColors.set(productIndex, button.dataset["boxerColor"] ?? "Noir");
+        boxerColors.querySelectorAll<HTMLButtonElement>("button").forEach((option) => {
+          option.classList.toggle("on", option === button);
+        });
+        cartStatus.textContent = `Couleur sélectionnée : ${(selectedProductColors.get(productIndex) ?? "Noir").toLowerCase()}.`;
+      };
+    });
     const thumb = $<HTMLElement>(".sa-thumb i");
     let activeQuote: Quote | null = null;
+    let quoteMode = false;
+    const selectedProductColors = new Map([
+      [0, "Noir"],
+      [1, "Noir"],
+    ]);
+    const cartVariants = new Map<number, string>();
+    const quoteVariants = new Map<number, string>();
 
-    const updateDialogSummary = () => {
-      const p = PRODUCTS[st.shown];
-      if (!p?.pack) return;
-      const quantity = st.packs;
-      const unit = priceFor(p.pack, quantity);
-      const subtotal = unit * quantity;
-      const details: Record<string, string> = {
-        ".sa-order-product": p.n,
-        ".sa-order-units": `${quantity * p.pack.units} unités`,
-        ".sa-order-unit-price": dh(unit),
-        ".sa-order-total": dh(subtotal),
-      };
-      Object.entries(details).forEach(([selector, value]) => {
-        $<HTMLElement>(selector).textContent = value;
-      });
-      dialogQuantity.textContent = `${quantity} pack${quantity > 1 ? "s" : ""}`;
+    quoteProductList.replaceChildren(
+      ...PRODUCTS.flatMap((product, productIndex) => {
+        if (!product.pack) return [];
+        const label = document.createElement("label");
+        label.className = "sa-quote-product-option";
+        const details = document.createElement("span");
+        details.textContent = `${product.n}${product.details ? ` · ${product.details}` : ""} · pack de ${product.pack.units} unités · à partir de ${dh(product.pack.tiers.at(-1)![1])}`;
+        const quantity = document.createElement("input");
+        quantity.type = "number";
+        quantity.min = "0";
+        quantity.max = "999";
+        quantity.step = "1";
+        quantity.value = "0";
+        quantity.dataset["productIndex"] = String(productIndex);
+        quantity.setAttribute("aria-label", `Quantité de packs : ${product.n}`);
+        label.append(details, quantity);
+        if (productIndex === 0 || productIndex === 1) {
+          const variants = document.createElement("span");
+          variants.className = "sa-quote-color-options";
+          ["Noir", "Blanc"].forEach((color) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset["boxerColor"] = color;
+            button.className = color === "Noir" ? "on" : "";
+            button.classList.add("sa-quote-color", color.toLowerCase());
+            button.setAttribute("aria-label", `Choisir la couleur ${color.toLowerCase()}`);
+            button.onclick = (event) => {
+              event.preventDefault();
+              quoteVariants.set(productIndex, color);
+              variants.querySelectorAll<HTMLButtonElement>("button").forEach((option) => {
+                option.classList.toggle("on", option === button);
+              });
+            };
+            variants.appendChild(button);
+          });
+          label.insertBefore(variants, quantity);
+        }
+        return [label];
+      }),
+    );
+
+    quoteProductList.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      const productIndex = Number(target.dataset["productIndex"]);
+      const quantity = Math.min(999, Math.max(0, Math.floor(Number(target.value) || 0)));
+      target.value = String(quantity);
+      if (quantity > 0) quoteQuantities.set(productIndex, quantity);
+      else quoteQuantities.delete(productIndex);
+      const lines = getCartLines(PRODUCTS, quoteQuantities);
+      quoteButton.disabled = lines.length === 0;
+      quoteSelectionStatus.textContent = `${lines.length} produit${lines.length === 1 ? "" : "s"} sélectionné${lines.length === 1 ? "" : "s"}`;
+    });
+
+    const renderCart = () => {
+      const lines = getCartLines(PRODUCTS, cart);
+      const packCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+      const units = lines.reduce((sum, line) => sum + line.units, 0);
+      const total = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+      cartCount.textContent = String(packCount);
+      cartButton.setAttribute(
+        "aria-label",
+        `Ouvrir le panier, ${packCount} pack${packCount === 1 ? "" : "s"}`,
+      );
+      quoteButton.disabled = lines.length === 0;
+      cartList.replaceChildren(
+        ...lines.map((line) => {
+          const item = document.createElement("article");
+          item.className = "sa-cart-item";
+
+          const details = document.createElement("div");
+          details.className = "sa-cart-item-details";
+          const name = document.createElement("strong");
+          name.textContent = line.product.details
+            ? `${line.product.n} · ${line.product.details}`
+            : line.product.n;
+          if (line.productIndex === 0 || line.productIndex === 1) {
+            const selectedColor = cartVariants.get(line.productIndex);
+            if (selectedColor) name.textContent += ` · ${selectedColor}`;
+          }
+          const price = document.createElement("span");
+          price.textContent = `Pack de ${line.unitsPerPack} · ${dh(line.unitPrice)} / pack`;
+          details.append(name, price);
+
+          const controls = document.createElement("div");
+          controls.className = "sa-cart-item-controls";
+          const decrease = document.createElement("button");
+          decrease.type = "button";
+          decrease.className = "sa-cart-change";
+          decrease.dataset["cartAction"] = "decrease";
+          decrease.dataset["productIndex"] = String(line.productIndex);
+          decrease.setAttribute("aria-label", `Retirer un pack de ${line.product.n}`);
+          decrease.textContent = "−";
+          const quantity = document.createElement("output");
+          quantity.textContent = String(line.quantity);
+          const increase = document.createElement("button");
+          increase.type = "button";
+          increase.className = "sa-cart-change";
+          increase.dataset["cartAction"] = "increase";
+          increase.dataset["productIndex"] = String(line.productIndex);
+          increase.setAttribute("aria-label", `Ajouter un pack de ${line.product.n}`);
+          increase.textContent = "+";
+          controls.append(decrease, quantity, increase);
+
+          const lineTotal = document.createElement("strong");
+          lineTotal.className = "sa-cart-line-total";
+          lineTotal.textContent = dh(line.lineTotal);
+
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "sa-cart-remove";
+          remove.dataset["cartAction"] = "remove";
+          remove.dataset["productIndex"] = String(line.productIndex);
+          remove.setAttribute("aria-label", `Supprimer ${line.product.n} du panier`);
+          remove.textContent = "Supprimer";
+
+          item.append(details, controls, lineTotal, remove);
+          return item;
+        }),
+      );
+      cartEmpty.hidden = lines.length > 0;
+      cartList.hidden = lines.length === 0;
+      cartSummary.hidden = lines.length === 0;
+      cartFields.hidden = lines.length === 0;
+      cartNote.textContent =
+        lines.length > 0
+          ? "TVA non calculée. Vérifiez votre panier puis envoyez la demande de commande sur WhatsApp."
+          : "Votre panier est vide. Ajoutez un ou plusieurs produits depuis la boutique.";
+      submitButton.disabled = lines.length === 0;
+      $(".sa-order-packs").textContent = `${packCount} pack${packCount === 1 ? "" : "s"}`;
+      $(".sa-order-units").textContent = `${units} unités`;
+      $(".sa-order-total").textContent = dh(total);
+    };
+
+    cartList.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest<HTMLButtonElement>("[data-cart-action]");
+      if (!button) return;
+      const productIndex = Number(button.dataset["productIndex"]);
+      const quantity = cart.get(productIndex);
+      if (quantity === undefined) return;
+      const action = button.dataset["cartAction"];
+      if (action === "remove") {
+        cart.delete(productIndex);
+      } else if (action === "decrease" && quantity > 1) {
+        cart.set(productIndex, quantity - 1);
+      } else if (action === "increase" && quantity < 999) {
+        cart.set(productIndex, quantity + 1);
+      }
+      renderCart();
+    });
+
+    cartButton.onclick = () => {
+      quoteMode = false;
+      orderTitle.textContent = "Votre panier";
+      orderForm.hidden = false;
+      quotePreview.hidden = true;
+      quotePicker.hidden = true;
+      quoteButton.hidden = true;
+      submitButton.hidden = false;
+      activeQuote = null;
+      renderCart();
+      orderDialog.showModal();
     };
 
     const createQuote = () => {
-      if (!orderForm.reportValidity()) return;
-      const p = PRODUCTS[st.shown];
-      if (!p?.pack) return;
-
+      const lines = getCartLines(PRODUCTS, quoteMode ? quoteQuantities : cart);
+      if (lines.length === 0) return;
       const data = new FormData(orderForm);
-      const quantity = st.packs;
-      const unit = priceFor(p.pack, quantity);
-      const total = unit * quantity;
-      const subtotal = roundMoney(total / (1 + VAT_RATE));
-      const vat = roundMoney(total - subtotal);
+      const items = lines.map((line) => ({
+        product: line.product.n,
+        variant:
+          line.productIndex === 0 || line.productIndex === 1
+            ? `${line.product.details ?? "Taille standard"} · ${quoteVariants.get(line.productIndex) ?? cartVariants.get(line.productIndex) ?? "Noir"}`
+            : undefined,
+        quantity: line.quantity,
+        units: line.units,
+        unitPrice: line.unitPrice,
+        lineTotal: line.lineTotal,
+      }));
+      const total = items.reduce((sum, item) => sum + item.lineTotal, 0);
       const now = new Date();
-      const validUntil = new Date(now);
-      validUntil.setDate(validUntil.getDate() + QUOTE_VALIDITY_DAYS);
-      const date = (value: Date) => value.toLocaleDateString("fr-FR");
+      const date = now.toLocaleDateString("fr-FR");
       const quote: Quote = {
-        number: `DEV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-6)}`,
-        issuedAt: date(now),
-        validUntil: date(validUntil),
+        number: `BDC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-6)}`,
+        issuedAt: date,
         customerName: String(data.get("customerName") ?? ""),
         customerPhone: String(data.get("customerPhone") ?? ""),
         customerAddress: String(data.get("deliveryAddress") ?? ""),
-        product: p.n,
-        quantity,
-        units: quantity * p.pack.units,
-        unitPrice: unit,
-        subtotal,
-        vat,
+        items,
         total,
       };
       activeQuote = quote;
       const previewValues: Record<string, string> = {
         ".sa-quote-number": quote.number,
         ".sa-quote-issued": quote.issuedAt,
-        ".sa-quote-valid-until": quote.validUntil,
         ".sa-quote-customer-name": quote.customerName,
         ".sa-quote-phone": quote.customerPhone,
         ".sa-quote-address": quote.customerAddress,
-        ".sa-quote-product": quote.product,
-        ".sa-quote-quantity": `${quote.quantity} pack${quote.quantity > 1 ? "s" : ""} (${quote.units} unités)`,
-        ".sa-quote-unit-price": dh(roundMoney(quote.unitPrice / (1 + VAT_RATE))),
-        ".sa-quote-subtotal": dh(quote.subtotal),
-        ".sa-quote-vat": dh(quote.vat),
         ".sa-quote-total": dh(quote.total),
       };
       Object.entries(previewValues).forEach(([selector, value]) => {
         $<HTMLElement>(selector).textContent = value;
       });
+      $(".sa-quote-lines").replaceChildren(
+        ...quote.items.map((item) => {
+          const row = document.createElement("div");
+          const product = document.createElement("span");
+          product.textContent = `${item.product}${item.variant ? ` · ${item.variant}` : ""} · ${item.quantity} pack${item.quantity > 1 ? "s" : ""} (${item.units} unités)`;
+          const total = document.createElement("b");
+          total.textContent = dh(item.lineTotal);
+          row.append(product, total);
+          return row;
+        }),
+      );
       orderForm.hidden = true;
       quotePreview.hidden = false;
-      $<HTMLButtonElement>(".sa-quote-back").focus();
+      $<HTMLHeadingElement>("#sa-quote-title").focus({ preventScroll: true });
+      orderDialog.scrollTop = 0;
     };
+
+    const openQuoteFromMenu = () => {
+      quoteMode = true;
+      quoteQuantities.clear();
+      quoteVariants.clear();
+      quoteVariants.set(0, "Noir");
+      quoteVariants.set(1, "Noir");
+      quoteProductList.querySelectorAll<HTMLInputElement>("input").forEach((input) => {
+        input.value = "0";
+      });
+      quoteProductList
+        .querySelectorAll<HTMLElement>(".sa-quote-color-options")
+        .forEach((options) => {
+          options.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+            button.classList.toggle("on", button.dataset["boxerColor"] === "Noir");
+          });
+        });
+      orderForm.hidden = false;
+      quotePreview.hidden = true;
+      quotePicker.hidden = false;
+      quoteSelectionStatus.textContent = "0 produit sélectionné";
+      cartList.hidden = true;
+      cartEmpty.hidden = true;
+      cartSummary.hidden = true;
+      cartFields.hidden = false;
+      cartNote.textContent =
+        "Choisissez les produits et les quantités. Vos coordonnées sont facultatives pour afficher le bon de commande.";
+      orderTitle.textContent = "Créer un bon de commande";
+      quoteButton.hidden = false;
+      quoteButton.disabled = true;
+      submitButton.hidden = true;
+      activeQuote = null;
+      if (!orderDialog.open) orderDialog.showModal();
+    };
+    addEventListener(OPEN_QUOTE_EVENT, openQuoteFromMenu);
+    quoteButton.onclick = createQuote;
 
     const downloadQuote = async () => {
       if (!activeQuote) return;
@@ -284,28 +501,26 @@ export function ShopArc() {
       pdf.text("Tél. 06 24 83 16 24", margin, 41);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(17);
-      pdf.text("PROJET DE DEVIS", right, 28, { align: "right" });
+      pdf.text("BON DE COMMANDE", right, 28, { align: "right" });
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(10);
       pdf.text(`N° ${quote.number}`, right, 35, { align: "right" });
       pdf.text(`Émis le ${quote.issuedAt}`, right, 41, { align: "right" });
-      pdf.text(`Valable jusqu'au ${quote.validUntil}`, right, 47, { align: "right" });
-
-      line(54);
+      line(48);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(12);
-      pdf.text("Client", margin, 64);
+      pdf.text("Client", margin, 58);
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(10);
-      pdf.text(quote.customerName, margin, 71);
-      pdf.text(quote.customerPhone, margin, 77);
+      pdf.text(quote.customerName, margin, 65);
+      pdf.text(quote.customerPhone, margin, 71);
       const addressLines = pdf.splitTextToSize(quote.customerAddress, pageWidth - margin * 2);
-      pdf.text(addressLines, margin, 83);
+      pdf.text(addressLines, margin, 77);
 
-      const tableTop = 91 + Math.max(0, addressLines.length - 1) * 5;
+      const tableTop = 85 + Math.max(0, addressLines.length - 1) * 5;
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(12);
-      pdf.text("Détail de la proposition", margin, tableTop);
+      pdf.text("Détail de la commande", margin, tableTop);
       line(tableTop + 6);
       pdf.setFontSize(9);
       pdf.setTextColor(100, 96, 87);
@@ -313,37 +528,25 @@ export function ShopArc() {
       pdf.text("MONTANT", right, tableTop + 13, { align: "right" });
       pdf.setTextColor(41, 39, 34);
       line(tableTop + 17);
-      row("Produit", quote.product, tableTop + 25);
-      row(
-        "Quantité",
-        `${quote.quantity} pack${quote.quantity > 1 ? "s" : ""} (${quote.units} unités)`,
-        tableTop + 33,
-      );
-      row("Prix unitaire HT", dh(roundMoney(quote.unitPrice / (1 + VAT_RATE))), tableTop + 41);
-      line(tableTop + 46);
-      row("Sous-total HT", dh(quote.subtotal), tableTop + 54);
-      row("TVA incluse (20 %)", dh(quote.vat), tableTop + 62);
+      const itemsStart = tableTop + 25;
+      quote.items.forEach((item, index) => {
+        row(
+          `${item.product}${item.variant ? ` · ${item.variant}` : ""} · ${item.quantity} pack${item.quantity > 1 ? "s" : ""} (${item.units} unités)`,
+          dh(item.lineTotal),
+          itemsStart + index * 9,
+        );
+      });
+      const totalsStart = itemsStart + quote.items.length * 9 + 4;
+      line(totalsStart - 5);
       pdf.setFontSize(12);
-      row("Total TTC", dh(quote.total), tableTop + 73, true);
-      line(tableTop + 79);
+      row("Total", dh(quote.total), totalsStart + 3, true);
+      line(totalsStart + 9);
 
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(9);
       pdf.setTextColor(80, 76, 66);
-      pdf.text(
-        "Livraison à confirmer avec le client, non comprise dans le total.",
-        margin,
-        tableTop + 89,
-      );
-      const notice = [
-        `Validité : ${QUOTE_VALIDITY_DAYS} jours. Ce document est un devis, pas une facture.`,
-        "TVA au taux de 20 % incluse dans le total TTC.",
-        "Identifiants légaux non renseignés : compléter et vérifier avant toute utilisation officielle.",
-      ];
-      pdf.text(notice, margin, tableTop + 101, {
-        maxWidth: pageWidth - margin * 2,
-      });
-      pdf.save(`devis-marketspa-${quote.number.toLowerCase()}.pdf`);
+      pdf.text("TVA non calculée. Livraison à confirmer, non comprise.", margin, totalsStart + 20);
+      pdf.save(`bon-de-commande-marketspa-${quote.number.toLowerCase()}.pdf`);
     };
 
     const updateOrder = () => {
@@ -380,26 +583,38 @@ export function ShopArc() {
         window.location.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
         return;
       }
-
-      updateDialogSummary();
-      orderDialog.showModal();
+      const alreadyAdded = cart.get(st.shown) ?? 0;
+      const added = Math.min(st.packs, 999 - alreadyAdded);
+      if (added === 0) {
+        cartStatus.textContent = `La quantité maximale de ${p.n} est déjà dans le panier.`;
+        return;
+      }
+      cart.set(st.shown, alreadyAdded + added);
+      if (st.shown === 0 || st.shown === 1) {
+        cartVariants.set(st.shown, selectedProductColors.get(st.shown) ?? "Noir");
+      }
+      cartStatus.textContent = `${added} pack${added > 1 ? "s" : ""} de ${p.n} ajouté${added > 1 ? "s" : ""} au panier.`;
+      renderCart();
+      st.packs = 1;
+      updateOrder();
     };
 
     orderForm.onsubmit = (event) => {
       event.preventDefault();
-      const p = PRODUCTS[st.shown];
-      if (!p?.pack) return;
-
       const data = new FormData(orderForm);
-      const quantity = st.packs;
-      const unit = priceFor(p.pack, quantity);
-      const total = unit * quantity;
+      const lines = getCartLines(PRODUCTS, cart);
+      if (lines.length === 0) return;
+      const total = lines.reduce((sum, item) => sum + item.lineTotal, 0);
       const body = [
-        `Produit : ${p.n}`,
-        `Quantité : ${quantity} pack${quantity > 1 ? "s" : ""} de ${p.pack.units} unités (${quantity * p.pack.units} unités)`,
-        `Prix par pack (TTC) : ${dh(unit)}`,
-        `Total TTC : ${dh(total)}`,
-        "TVA de 20 % incluse dans le prix.",
+        ...lines.flatMap((item, index) => [
+          `${index + 1}. ${item.product.n}${item.product.details ? ` · ${item.product.details}` : ""}${(item.productIndex === 0 || item.productIndex === 1) && cartVariants.get(item.productIndex) ? ` · ${cartVariants.get(item.productIndex)}` : ""}`,
+          `Quantité : ${item.quantity} pack${item.quantity > 1 ? "s" : ""} de ${item.unitsPerPack} unités (${item.units} unités)`,
+          `Prix par pack : ${dh(item.unitPrice)}`,
+          `Total ligne : ${dh(item.lineTotal)}`,
+          "",
+        ]),
+        `Total estimé : ${dh(total)}`,
+        "TVA non calculée.",
         "Livraison : à confirmer (non incluse)",
         "",
         `Nom : ${data.get("customerName")}`,
@@ -411,32 +626,38 @@ export function ShopArc() {
       orderDialog.close();
     };
 
-    $<HTMLButtonElement>(".sa-order-quote").onclick = createQuote;
     $<HTMLButtonElement>(".sa-quote-download").onclick = downloadQuote;
     $<HTMLButtonElement>(".sa-quote-back").onclick = () => {
       quotePreview.hidden = true;
       orderForm.hidden = false;
-      $<HTMLButtonElement>(".sa-order-quote").focus();
+      quotePicker.hidden = !quoteMode;
+      (quoteButton.hidden ? cartButton : quoteButton).focus();
     };
 
     const setPacks = (n: number) => {
       st.packs = Math.max(1, Math.min(999, Math.round(n) || 1));
-      if (st.shown >= 0) {
-        updateOrder();
-        if (orderDialog.open) updateDialogSummary();
-      }
+      if (st.shown >= 0) updateOrder();
     };
     $<HTMLButtonElement>(".sa-minus").onclick = () => setPacks(st.packs - 1);
     $<HTMLButtonElement>(".sa-plus").onclick = () => setPacks(st.packs + 1);
-    $<HTMLButtonElement>(".sa-order-minus").onclick = () => setPacks(st.packs - 1);
-    $<HTMLButtonElement>(".sa-order-plus").onclick = () => setPacks(st.packs + 1);
 
     const updateBuy = (k: number) => {
       const p = PRODUCTS[k]!;
       roll($(".sa-name"), p.n);
-      roll($(".sa-sub"), p.pack ? `Pack de ${p.pack.units} unités` : "Bientôt disponible");
+      roll(
+        $(".sa-sub"),
+        p.pack ? (p.details ?? `Pack de ${p.pack.units} unités`) : "Bientôt disponible",
+      );
+      boxerColors.hidden = k !== 0 && k !== 1;
+      boxerColors.dataset["productIndex"] = String(k);
+      boxerColors.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+        button.classList.toggle(
+          "on",
+          button.dataset["boxerColor"] === (selectedProductColors.get(k) ?? "Noir"),
+        );
+      });
       buy.classList.toggle("is-soon", !p.pack);
-      order.textContent = p.pack ? "Commander" : "Nous contacter";
+      order.textContent = p.pack ? "Ajouter au panier" : "Nous contacter";
       // paliers de prix (cliquer un palier règle la quantité)
       tiersEl.innerHTML = "";
       p.pack?.tiers.forEach(([min, price], i) => {
@@ -656,6 +877,7 @@ export function ShopArc() {
       removeEventListener("keydown", onKey);
       removeEventListener("resize", sizes);
       delete document.body.dataset["cur"];
+      removeEventListener(OPEN_QUOTE_EVENT, openQuoteFromMenu);
     };
   }, []);
 
@@ -667,6 +889,17 @@ export function ShopArc() {
         <span className="sa-brand-s">Market Spa</span>
         <span className="sa-brand-c">Marrakech</span>
       </h2>
+      <button
+        className="sa-cart-button sa-glass"
+        type="button"
+        aria-label="Ouvrir le panier, 0 packs"
+      >
+        Panier{" "}
+        <span className="sa-cart-count" aria-live="polite">
+          0
+        </span>
+      </button>
+      <span className="sa-cart-status" role="status" aria-live="polite" />
 
       <div className="sa-stage">
         <div className="sa-arc">
@@ -733,16 +966,35 @@ export function ShopArc() {
           </div>
         </div>
         <div className="sa-opt sa-paid sa-o-tiers">
-          <span className="sa-lbl">Prix par pack</span>
+          <span className="sa-lbl">Prix / pack</span>
           <div className="sa-tiers" />
+        </div>
+        <div className="sa-boxer-colors sa-paid" hidden>
+          <span className="sa-lbl">Couleur</span>
+          <div className="sa-color-options">
+            <button
+              type="button"
+              className="sa-color-noir on"
+              data-boxer-color="Noir"
+              aria-label="Couleur noir"
+              title="Noir"
+            />
+            <button
+              type="button"
+              className="sa-color-blanc"
+              data-boxer-color="Blanc"
+              aria-label="Couleur blanc"
+              title="Blanc"
+            />
+          </div>
         </div>
         <div className="sa-opt sa-paid sa-sum">
           <span className="sa-lbl sa-save" />
           <div className="sa-ln sa-total" />
         </div>
-        <a className="sa-order" href={`https://wa.me/${WHATSAPP_NUMBER}`}>
-          Commander
-        </a>
+        <button className="sa-order" type="button">
+          Ajouter au panier
+        </button>
       </div>
 
       <dialog className="sa-order-dialog sa-glass" aria-labelledby="sa-order-title">
@@ -750,7 +1002,7 @@ export function ShopArc() {
           <div className="sa-order-heading">
             <div>
               <p className="sa-order-eyebrow">Market Spa · Marrakech</p>
-              <h2 id="sa-order-title">Votre commande</h2>
+              <h2 id="sa-order-title">Votre panier</h2>
             </div>
             <button
               className="sa-order-close"
@@ -764,37 +1016,35 @@ export function ShopArc() {
             </button>
           </div>
 
+          <p className="sa-cart-empty" hidden>
+            Votre panier est vide. Ajoutez un ou plusieurs produits depuis la boutique.
+          </p>
+          <section className="sa-quote-picker" aria-labelledby="sa-quote-picker-title" hidden>
+            <h3 id="sa-quote-picker-title">Choisissez vos produits</h3>
+            <div className="sa-quote-product-list" />
+            <p className="sa-quote-selection-status" aria-live="polite">
+              0 produit sélectionné
+            </p>
+            <p className="sa-quote-availability-note">
+              Les prix sont actuellement disponibles pour les boxers homme et les strings femme.
+            </p>
+          </section>
+          <div className="sa-cart-items" aria-live="polite" hidden />
           <dl className="sa-order-summary">
             <div>
-              <dt>Produit</dt>
-              <dd className="sa-order-product" />
+              <dt>Nombre de packs</dt>
+              <dd className="sa-order-packs" />
             </div>
             <div>
-              <dt>Quantité</dt>
-              <dd className="sa-order-quantity-control">
-                <button className="sa-order-minus" type="button" aria-label="Retirer un pack">
-                  −
-                </button>
-                <output className="sa-order-quantity" aria-live="polite" />
-                <button className="sa-order-plus" type="button" aria-label="Ajouter un pack">
-                  +
-                </button>
-              </dd>
-            </div>
-            <div>
-              <dt>Nombre d'unités</dt>
+              <dt>Nombre total d’unités</dt>
               <dd className="sa-order-units" />
-            </div>
-            <div>
-              <dt>Prix par pack</dt>
-              <dd className="sa-order-unit-price" />
             </div>
             <div>
               <dt>Livraison</dt>
               <dd>À confirmer</dd>
             </div>
             <div className="sa-order-total-row">
-              <dt>Total</dt>
+              <dt>Total estimé</dt>
               <dd className="sa-order-total" />
             </div>
           </dl>
@@ -815,8 +1065,7 @@ export function ShopArc() {
           </div>
 
           <p className="sa-order-note">
-            Crée un aperçu du devis dans cette fenêtre, ou envoie directement ta demande sur
-            WhatsApp.
+            Vérifiez votre panier puis envoyez la demande de commande sur WhatsApp.
           </p>
           <div className="sa-order-actions">
             <button
@@ -828,11 +1077,11 @@ export function ShopArc() {
             >
               Retour à la boutique
             </button>
-            <button className="sa-order-quote" type="button">
-              Créer le devis
+            <button className="sa-order-quote" type="button" hidden>
+              Afficher le bon de commande
             </button>
             <button className="sa-order-submit" type="submit">
-              WhatsApp
+              Commander via WhatsApp
             </button>
           </div>
         </form>
@@ -846,15 +1095,14 @@ export function ShopArc() {
                 <p>Tél. 06 24 83 16 24</p>
               </div>
               <div className="sa-quote-meta">
-                <h2 id="sa-quote-title">Projet de devis</h2>
+                <h2 id="sa-quote-title" tabIndex={-1}>
+                  Bon de commande
+                </h2>
                 <p>
                   N° <span className="sa-quote-number" />
                 </p>
                 <p>
                   Émis le <span className="sa-quote-issued" />
-                </p>
-                <p>
-                  Valable jusqu’au <span className="sa-quote-valid-until" />
                 </p>
               </div>
             </header>
@@ -867,40 +1115,19 @@ export function ShopArc() {
             </div>
 
             <div className="sa-quote-items">
-              <h3>Détail de la proposition</h3>
-              <div>
-                <span className="sa-quote-product" />
-                <b>
-                  Prix unitaire HT · <span className="sa-quote-unit-price" />
-                </b>
-              </div>
-              <div>
-                <span>
-                  Quantité · <span className="sa-quote-quantity" />
-                </span>
-              </div>
+              <h3>Détail de la commande</h3>
+              <div className="sa-quote-lines" />
             </div>
 
             <dl className="sa-quote-totals">
-              <div>
-                <dt>Sous-total HT</dt>
-                <dd className="sa-quote-subtotal" />
-              </div>
-              <div>
-                <dt>TVA incluse (20 %)</dt>
-                <dd className="sa-quote-vat" />
-              </div>
               <div className="sa-quote-grand-total">
-                <dt>Total TTC</dt>
+                <dt>Total</dt>
                 <dd className="sa-quote-total" />
               </div>
             </dl>
 
             <p className="sa-quote-delivery">Livraison à confirmer avec le client, non comprise.</p>
-            <p className="sa-quote-disclaimer">
-              Ce document est un devis, pas une facture. Identifiants légaux non renseignés :
-              complète et vérifie ces informations avant toute utilisation officielle.
-            </p>
+            <p className="sa-quote-disclaimer">TVA non calculée.</p>
           </div>
 
           <div className="sa-quote-actions">
@@ -908,7 +1135,7 @@ export function ShopArc() {
               Modifier la commande
             </button>
             <button className="sa-quote-download" type="button">
-              Télécharger le devis PDF
+              Télécharger le bon de commande PDF
             </button>
           </div>
         </section>

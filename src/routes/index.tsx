@@ -6,12 +6,13 @@ import { ServiceZoom } from "@/components/ServiceZoom";
 import { ContactPanel } from "@/components/ContactPanel";
 import { ShopArc } from "@/components/ShopArc";
 import { FallingFlowers } from "@/components/FallingFlowers";
+import { OPEN_QUOTE_EVENT } from "@/lib/shop-cart";
 
 export const Route = createFileRoute("/")({
   ssr: false,
   head: () => ({ meta: [
     { title: "Market Spa — Produits jetables" },
-    { name: "description", content: "Market Spa vous accompagne avec une sélection de produits jetables pratiques pour vos besoins du quotidien." },
+    { name: "description", content: "Market Spa vous accompagne avec une sélection de produits jetables pratiques  vos besoins du quotidien." },
     { property: "og:title", content: "Market Spa — Produits jetables" },
     { property: "og:description", content: "Une sélection de produits jetables pratiques pour vos besoins du quotidien." },
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" },
@@ -91,20 +92,24 @@ function Index() {
 
   const hv = { onPointerEnter: () => setBig(true), onPointerLeave: () => setBig(false) };
   const [contact, setContact] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const closeContact = useCallback(() => setContact(false), []);
   const openContact = (e: React.MouseEvent) => {
     e.preventDefault();
+    setMenuOpen(false);
     // retour instantané en haut (le scroll est ensuite bloqué)
     scrollTo({ top: 0, behavior: "instant" });
     setContact(true);
   };
   const goHome = (e: React.MouseEvent) => {
     e.preventDefault();
+    setMenuOpen(false);
     setContact(false);
     scrollTo({ top: 0, behavior: "smooth" });
   };
   const goServices = (e: React.MouseEvent) => {
     e.preventDefault();
+    setMenuOpen(false);
     setContact(false);
     document.getElementById("boutique")?.scrollIntoView({ behavior: "smooth" });
   };
@@ -124,13 +129,54 @@ function Index() {
           <nav>
             <a href="#" onClick={goHome} {...hv}>Accueil</a><a href="#boutique" onClick={goServices} {...hv}>Produits</a>
             <a href="#contact" className={`nav-contact ${contact ? "active" : ""}`} onClick={openContact} {...hv}>Contact</a>
-            <button className="dot-btn" aria-label="Ouvrir le menu" {...hv}><i /><i /></button>
+            <button
+              className="nav-quote"
+              type="button"
+              onClick={() => window.dispatchEvent(new Event(OPEN_QUOTE_EVENT))}
+              {...hv}
+            >
+              <span className="nav-quote-long">Créer un bon de commande</span>
+              <span className="nav-quote-short">Bon de commande</span>
+              <span className="nav-quote-arrow" aria-hidden="true">↘</span>
+            </button>
+            <div className="nav-menu">
+              <button
+                className="dot-btn"
+                aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+                aria-expanded={menuOpen}
+                aria-controls="site-menu"
+                onClick={() => setMenuOpen((open) => !open)}
+                {...hv}
+              >
+                <i /><i />
+              </button>
+              {menuOpen && (
+                <div className="site-menu" id="site-menu">
+                  <a href="#" onClick={goHome} {...hv}>Accueil</a>
+                  <a href="#boutique" onClick={goServices} {...hv}>Produits</a>
+                  <a href="#contact" onClick={openContact} {...hv}>Contact</a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      window.dispatchEvent(new Event(OPEN_QUOTE_EVENT));
+                    }}
+                    {...hv}
+                  >
+                    Bon de commande
+                  </button>
+                </div>
+              )}
+            </div>
           </nav>
         </header>
         <div className="hero-zoom">
         <FallingFlowers className="hero-flowers" count={20} />
         <section className="hero">
-          <p className="kicker reveal" style={{ ["--d" as string]: ".1s" }}>Les essentiels à usage unique</p>
+          <p className="kicker reveal" style={{ ["--d" as string]: ".1s" }}>
+    La boutique dédiée aux produits jetables<br className="kicker-br" />
+    pour spas, hammams et hôtels
+  </p>
           <h1>
             <span className="serif reveal" style={{ ["--d" as string]: ".25s" }}>Market Spa</span>
             <span className="sans reveal" style={{ ["--d" as string]: ".4s" }}>à Marrakech</span>
