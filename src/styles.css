@@ -603,9 +603,15 @@ body:has(.sa-order-dialog[open]) textarea {
     transform: scale(1.1);
   }
   .ui-head nav {
-    gap: 12px;
+    gap: 8px;
+    font-size: 15px;
   }
-  .ui-head nav > a,
+  .ui-head {
+    padding-inline: 16px;
+  }
+  .ui-head nav > a {
+    display: inline-flex;
+  }
   .ui-head nav button.nav-quote {
     display: none;
   }
@@ -661,10 +667,11 @@ body:has(.sa-order-dialog[open]) textarea {
     padding-inline: 16px;
   }
   .brand {
-    font-size: 27px;
+    font-size: 25px;
   }
   .ui-head nav {
-    gap: 8px;
+    gap: 5px;
+    font-size: 13px;
   }
   .dot-btn {
     width: 42px;

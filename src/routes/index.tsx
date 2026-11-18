@@ -152,9 +152,6 @@ function Index() {
               </button>
               {menuOpen && (
                 <div className="site-menu" id="site-menu">
-                  <a href="#" onClick={goHome} {...hv}>Accueil</a>
-                  <a href="#boutique" onClick={goServices} {...hv}>Produits</a>
-                  <a href="#contact" onClick={openContact} {...hv}>Contact</a>
                   <button
                     type="button"
                     onClick={() => {
@@ -163,7 +160,7 @@ function Index() {
                     }}
                     {...hv}
                   >
-                    Bon de commande
+                    Créer un bon de commande
                   </button>
                 </div>
               )}
