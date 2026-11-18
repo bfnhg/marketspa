@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
-import { EMAIL } from "@/lib/contact";
+import { CONTACT_PHONES, EMAIL } from "@/lib/contact";
 import { waterView } from "@/components/WaterScene";
 import { ContactRoom } from "@/components/ContactRoom";
 
@@ -134,9 +134,22 @@ export function ContactPanel({ open, onClose, onHover }: Props) {
               Vente en détail <span>↘</span>
             </a>
           </div>
-          <a className="ct-mail" href={`mailto:${EMAIL}`} tabIndex={open ? 0 : -1} {...hv}>
-            {EMAIL}
-          </a>
+          <div className="ct-contact-details">
+            <a className="ct-mail" href={`mailto:${EMAIL}`} tabIndex={open ? 0 : -1} {...hv}>
+              {EMAIL}
+            </a>
+            {CONTACT_PHONES.map((phone) => (
+              <a
+                key={phone.href}
+                className="ct-mail ct-phone"
+                href={phone.href}
+                tabIndex={open ? 0 : -1}
+                {...hv}
+              >
+                {phone.display}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </div>

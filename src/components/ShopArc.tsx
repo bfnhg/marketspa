@@ -7,6 +7,7 @@ import gant from "@/assets/products/gant.png";
 import boxer from "@/assets/products/boxer.png";
 import bougie from "@/assets/products/bougie.png";
 import { WHATSAPP_NUMBER } from "@/lib/contact";
+import { formatDh, formatPdfDh } from "@/lib/money";
 import { getCartLines, OPEN_QUOTE_EVENT, priceFor, type CartProduct } from "@/lib/shop-cart";
 
 /*
@@ -71,7 +72,7 @@ const N = PRODUCTS.length;
 const CARDS = N * 2; // deux tours de produits : l'arc boucle sans couture
 const HALF = N;
 
-const dh = (v: number) => `${v.toLocaleString("fr-FR")} DH`;
+const dh = formatDh;
 const tierLabel = (tiers: [number, number][], i: number) => {
   const min = tiers[i]![0];
   const next = tiers[i + 1]?.[0];
@@ -532,14 +533,14 @@ export function ShopArc() {
       quote.items.forEach((item, index) => {
         row(
           `${item.product}${item.variant ? ` · ${item.variant}` : ""} · ${item.quantity} pack${item.quantity > 1 ? "s" : ""} (${item.units} unités)`,
-          dh(item.lineTotal),
+          formatPdfDh(item.lineTotal),
           itemsStart + index * 9,
         );
       });
       const totalsStart = itemsStart + quote.items.length * 9 + 4;
       line(totalsStart - 5);
       pdf.setFontSize(12);
-      row("Total", dh(quote.total), totalsStart + 3, true);
+      row("Total", formatPdfDh(quote.total), totalsStart + 3, true);
       line(totalsStart + 9);
 
       pdf.setFont("helvetica", "normal");
